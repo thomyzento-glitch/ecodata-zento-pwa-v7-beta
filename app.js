@@ -77,41 +77,109 @@ function remoteToLocal(r){
     created_at:r.created_at||null
   };
 }
+function formatSupabaseError(err){
+  if(!err) return "Error desconocido";
+  const parts=[];
+  if(err.message) parts.push(err.message);
+  if(err.code) parts.push(`Código ${err.code}`);
+  if(err.details) parts.push(err.details);
+  if(err.hint) parts.push(`Ayuda: ${err.hint}`);
+  return parts.join(" · ") || String(err);
+}
+
+function showSyncError(err){
+  const detail=formatSupabaseError(err);
+  console.error("EcoData · error Supabase:", err);
+  setSyncStatus(`⚠️ Supabase: ${detail}`, false);
+}
+
+async function fetchRemoteRecords(){
+  const {data:remote,error}=await supabaseClient
+    .from(SUPABASE_TABLE)
+    .select("id,fecha,hora,sucursal,empleado,peso,observaciones,created_at")
+    .order("created_at",{ascending:false});
+  if(error) throw error;
+  return Array.isArray(remote) ? remote.map(remoteToLocal) : [];
+}
+
+async function insertMissingLocalRecords(local,remote){
+  const remoteIds=new Set(remote.map(r=>String(r.id)));
+  const pending=local.filter(r=>!remoteIds.has(String(r.id)));
+  if(!pending.length) return 0;
+
+  // Insertamos únicamente registros que todavía no existen en la nube.
+  // Así evitamos que un upsert dependa de permisos UPDATE y reducimos duplicados.
+  const payload=pending.map(recordToRemote);
+  const {error}=await supabaseClient.from(SUPABASE_TABLE).insert(payload);
+  if(error) throw error;
+  return pending.length;
+}
+
 async function syncWithSupabase(){
-  if(!supabaseClient){setSyncStatus("⚠️ Datos locales");return;}
+  if(!supabaseClient){setSyncStatus("⚠️ Supabase no disponible");return;}
+  if(!navigator.onLine){setSyncStatus("📴 Sin conexión · guardado local");return;}
+
   try{
     setSyncStatus("☁️ Sincronizando...");
+
+    // 1) Primero descargamos lo que ya existe en Supabase.
+    let remote=await fetchRemoteRecords();
+
+    // 2) Comparamos contra el almacenamiento local y subimos solo lo pendiente.
     const local=normalizeLocalRecords(data());
-    if(local.length){
-      const {error}=await supabaseClient.from(SUPABASE_TABLE).upsert(local.map(recordToRemote),{onConflict:"id"});
-      if(error)throw error;
-    }
-    const {data:remote,error:selectError}=await supabaseClient.from(SUPABASE_TABLE).select("id,fecha,hora,sucursal,empleado,peso,observaciones,created_at").order("created_at",{ascending:false});
-    if(selectError)throw selectError;
+    const inserted=await insertMissingLocalRecords(local,remote);
+
+    // 3) Volvemos a descargar para que todos los dispositivos queden con la misma fuente central.
+    if(inserted) remote=await fetchRemoteRecords();
+
     const merged=new Map();
-    (Array.isArray(remote)?remote:[]).forEach(r=>merged.set(String(r.id),remoteToLocal(r)));
-    local.forEach(r=>{if(!merged.has(String(r.id)))merged.set(String(r.id),r);});
+    remote.forEach(r=>merged.set(String(r.id),r));
+    local.forEach(r=>{
+      if(!merged.has(String(r.id))) merged.set(String(r.id),r);
+    });
+
     const result=Array.from(merged.values()).sort((a,b)=>{
-      const da=a.created_at?new Date(a.created_at).getTime():0, db=b.created_at?new Date(b.created_at).getTime():0;
+      const da=a.created_at?new Date(a.created_at).getTime():0;
+      const db=b.created_at?new Date(b.created_at).getTime():0;
       if(db!==da)return db-da;
       return String(b.fecha+" "+b.hora).localeCompare(String(a.fecha+" "+a.hora));
     });
+
     localStorage.setItem(KEY,JSON.stringify(result));
-    render(); setSyncStatus("☁️ Datos sincronizados",true);
+    render();
+    setSyncStatus(`☁️ Datos sincronizados · ${result.length} registros`,true);
   }catch(err){
-    console.error("Error sincronizando con Supabase:",err);
-    setSyncStatus(navigator.onLine?"⚠️ Error de sincronización":"📴 Sin conexión · guardado local");
+    showSyncError(err);
   }
 }
+
 async function syncSingleRecord(record){
-  if(!supabaseClient || !navigator.onLine)return false;
+  if(!supabaseClient || !navigator.onLine){
+    setSyncStatus("📴 Guardado local · pendiente de sincronizar");
+    return false;
+  }
+
   try{
-    const {error}=await supabaseClient.from(SUPABASE_TABLE).upsert([recordToRemote(record)],{onConflict:"id"});
-    if(error)throw error;
-    setSyncStatus("☁️ Datos sincronizados",true); return true;
+    // Comprobamos si el ID ya existe antes de insertar.
+    const {data:existing,error:checkError}=await supabaseClient
+      .from(SUPABASE_TABLE)
+      .select("id")
+      .eq("id",String(record.id))
+      .maybeSingle();
+    if(checkError) throw checkError;
+
+    if(!existing){
+      const {error}=await supabaseClient
+        .from(SUPABASE_TABLE)
+        .insert([recordToRemote(record)]);
+      if(error) throw error;
+    }
+
+    setSyncStatus("☁️ Pesaje sincronizado",true);
+    return true;
   }catch(err){
-    console.warn("El pesaje quedó pendiente de sincronización:",err);
-    setSyncStatus("📴 Guardado local · pendiente de sincronizar"); return false;
+    showSyncError(err);
+    return false;
   }
 }
 
@@ -390,12 +458,12 @@ setInterval(()=>{if(document.visibilityState==="visible" && navigator.onLine)syn
    PWA — actualización automática
    ========================= */
 
-const APP_VERSION = "10";
+const APP_VERSION = "11";
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", async () => {
     try {
-      const reg = await navigator.serviceWorker.register("./service-worker-v10.js?v=" + APP_VERSION, {
+      const reg = await navigator.serviceWorker.register("./service-worker-v11.js?v=" + APP_VERSION, {
         scope: "./",
         updateViaCache: "none"
       });
