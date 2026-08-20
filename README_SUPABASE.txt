@@ -1,4 +1,4 @@
-ECODATA ZENTO v9 — SUPABASE
+ECODATA ZENTO v10 — SUPABASE
 
 Esta versión conecta la PWA con el proyecto Supabase de EcoData-Zento.
 

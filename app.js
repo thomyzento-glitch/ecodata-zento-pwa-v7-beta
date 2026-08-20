@@ -39,11 +39,43 @@ function normalizeLocalRecords(records){
   if(changed)localStorage.setItem(KEY,JSON.stringify(out));
   return out;
 }
+function toSupabaseDate(value){
+  const raw=String(value||"").trim();
+  let m=raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if(m) return `${m[3]}-${String(m[2]).padStart(2,"0")}-${String(m[1]).padStart(2,"0")}`;
+  m=raw.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  if(m) return `${m[1]}-${String(m[2]).padStart(2,"0")}-${String(m[3]).padStart(2,"0")}`;
+  return raw;
+}
+function fromSupabaseDate(value){
+  const raw=String(value||"").trim();
+  const m=raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if(m) return `${Number(m[3])}/${Number(m[2])}/${m[1]}`;
+  return raw;
+}
 function recordToRemote(r){
-  return {id:String(r.id),fecha:String(r.fecha||""),hora:String(r.hora||""),sucursal:String(r.sucursal||"Sin sucursal"),empleado:String(r.empleado||""),peso:Number(r.peso||0),observaciones:String(r.observaciones||""),created_at:r.created_at||new Date().toISOString()};
+  return {
+    id:String(r.id),
+    fecha:toSupabaseDate(r.fecha),
+    hora:String(r.hora||""),
+    sucursal:String(r.sucursal||"Sin sucursal"),
+    empleado:String(r.empleado||""),
+    peso:Number(r.peso||0),
+    observaciones:String(r.observaciones||""),
+    created_at:r.created_at||new Date().toISOString()
+  };
 }
 function remoteToLocal(r){
-  return {id:String(r.id),fecha:String(r.fecha||""),hora:String(r.hora||""),sucursal:String(r.sucursal||"Sin sucursal"),empleado:String(r.empleado||""),peso:Number(r.peso||0),observaciones:String(r.observaciones||""),created_at:r.created_at||null};
+  return {
+    id:String(r.id),
+    fecha:fromSupabaseDate(r.fecha),
+    hora:String(r.hora||""),
+    sucursal:String(r.sucursal||"Sin sucursal"),
+    empleado:String(r.empleado||""),
+    peso:Number(r.peso||0),
+    observaciones:String(r.observaciones||""),
+    created_at:r.created_at||null
+  };
 }
 async function syncWithSupabase(){
   if(!supabaseClient){setSyncStatus("⚠️ Datos locales");return;}
@@ -358,12 +390,12 @@ setInterval(()=>{if(document.visibilityState==="visible" && navigator.onLine)syn
    PWA — actualización automática
    ========================= */
 
-const APP_VERSION = "9";
+const APP_VERSION = "10";
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", async () => {
     try {
-      const reg = await navigator.serviceWorker.register("./service-worker-v9.js?v=" + APP_VERSION, {
+      const reg = await navigator.serviceWorker.register("./service-worker-v10.js?v=" + APP_VERSION, {
         scope: "./",
         updateViaCache: "none"
       });
