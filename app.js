@@ -26,15 +26,24 @@ function render(){
  const d=data(),total=d.reduce((s,r)=>s+Number(r.peso),0);
  $("total").textContent=kg(total);$("records").textContent=d.length;
  renderDashboard(d);
+ renderHistorical(d);
  $("recent").innerHTML=d.slice(0,5).map(r=>`<div class="row"><div class="row-icon">KG</div><div class="row-info"><b>${safe(r.empleado)} · ${safe(r.sucursal)}</b><small>${safe(r.fecha)} · ${safe(r.hora)}</small></div><div class="row-weight">${kg(r.peso)} kg<small>${""}</small></div></div>`).join("")||'<div class="row">Sin registros.</div>';
  renderHistory();
 }
 
 function parseRecordDate(record){
-  const match=String(record.fecha||"").match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
-  if(!match)return null;
-  const d=new Date(Number(match[3]),Number(match[2])-1,Number(match[1]));
-  return Number.isNaN(d.getTime())?null:d;
+  const raw=String(record.fecha||"").trim();
+  let match=raw.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
+  if(match){
+    const d=new Date(Number(match[3]),Number(match[2])-1,Number(match[1]));
+    return Number.isNaN(d.getTime())?null:d;
+  }
+  match=raw.match(/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})/);
+  if(match){
+    const d=new Date(Number(match[1]),Number(match[2])-1,Number(match[3]));
+    return Number.isNaN(d.getTime())?null:d;
+  }
+  return null;
 }
 
 function renderDashboard(records){
@@ -75,6 +84,46 @@ function renderDashboard(records){
     $("branchBars").innerHTML='<div class="dashboard-empty">Todavía no hay datos por sucursal.</div>';
   }
 }
+function renderHistorical(records){
+  const year=new Date().getFullYear();
+  const monthNames=["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+  const monthly=Array(12).fill(0);
+  let validRecords=0;
+
+  records.forEach(r=>{
+    const d=parseRecordDate(r);
+    if(d && d.getFullYear()===year){
+      monthly[d.getMonth()]+=Number(r.peso||0);
+      validRecords++;
+    }
+  });
+
+  const annualTotal=monthly.reduce((a,b)=>a+b,0);
+  const activeMonths=monthly.filter(v=>v>0).length;
+  const averageMonthly=activeMonths?annualTotal/activeMonths:0;
+  const peakValue=Math.max(...monthly);
+  const peakIndex=peakValue>0?monthly.indexOf(peakValue):-1;
+
+  $("historicalYear").textContent=`${year}`;
+  $("historicalTotal").textContent=`${kg(annualTotal)} kg`;
+  $("peakMonth").textContent=peakIndex>=0?`${monthNames[peakIndex]} · ${kg(peakValue)} kg`:"Sin datos";
+  $("yearlyAverage").textContent=`${kg(averageMonthly)} kg`;
+
+  const max=Math.max(...monthly,1);
+  $("historyChart").innerHTML=monthly.map((value,index)=>{
+    const height=value>0?Math.max(8,Math.round((value/max)*100)):4;
+    return `<div class="history-bar-item" title="${monthNames[index]}: ${kg(value)} kg">
+      <div class="history-bar-value">${value>0?kg(value):""}</div>
+      <div class="history-bar-track"><span style="height:${height}%"></span></div>
+      <small>${monthNames[index]}</small>
+    </div>`;
+  }).join("");
+
+  $("historyNote").textContent=annualTotal>0
+    ? `${validRecords} ${validRecords===1?"registro":"registros"} en ${activeMonths} ${activeMonths===1?"mes":"meses"}.`
+    : "Todavía no hay datos del año.";
+}
+
 function renderHistory(){
  const q=($("search")?.value||"").toLowerCase();
  const d=data().filter(r=>[r.fecha,r.hora,r.sucursal,r.empleado].join(" ").toLowerCase().includes(q));
@@ -218,12 +267,12 @@ $("closeQrScanner").addEventListener("click",closeQrScanner);
    PWA — actualización automática
    ========================= */
 
-const APP_VERSION = "7";
+const APP_VERSION = "8";
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", async () => {
     try {
-      const reg = await navigator.serviceWorker.register("./service-worker-v7.js?v=" + APP_VERSION, {
+      const reg = await navigator.serviceWorker.register("./service-worker-v8.js?v=" + APP_VERSION, {
         scope: "./",
         updateViaCache: "none"
       });

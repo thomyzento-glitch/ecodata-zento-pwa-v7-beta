@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="EcoData">
 <title>EcoData Zento · Móvil</title>
-<link rel="stylesheet" href="./style.css?v=7">
+<link rel="stylesheet" href="./style.css?v=8">
   <!-- Lector QR mediante la cámara del dispositivo -->
   <script src="https://unpkg.com/html5-qrcode" defer></script>
   <link rel="manifest" href="./manifest.json">
@@ -53,6 +53,28 @@
       <div class="branch-dashboard-head"><b>Distribución por sucursal</b><small id="branchCount">Sin registros</small></div>
       <div id="branchBars" class="branch-bars"></div>
     </div>
+
+    <section class="historical-dashboard" aria-label="Histórico anual">
+      <div class="historical-head">
+        <div>
+          <b>Histórico</b>
+          <small id="historicalYear">Año actual</small>
+        </div>
+        <span id="historicalTotal">0,00 kg</span>
+      </div>
+      <div class="historical-mini-grid">
+        <article>
+          <small>MES CON MÁS KG</small>
+          <strong id="peakMonth">Sin datos</strong>
+        </article>
+        <article>
+          <small>PROMEDIO MENSUAL</small>
+          <strong id="yearlyAverage">0,00 kg</strong>
+        </article>
+      </div>
+      <div class="history-chart" id="historyChart" aria-label="Kg registrados por mes"></div>
+      <div class="history-legend"><span><i></i> Kilogramos registrados por mes</span><small id="historyNote">Todavía no hay datos del año.</small></div>
+    </section>
   </section>
 
   <div class="section-title"><h2>Actividad reciente</h2><button data-screen="historial">Ver todo</button></div>
@@ -107,7 +129,7 @@
 <button data-screen="historial"><span>≡</span>Historial</button>
 </nav>
 <div id="toast" class="toast"></div>
-<script src="./app.js?v=7"></script>
+<script src="./app.js?v=8"></script>
 </div>
 </body>
 </html>
