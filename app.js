@@ -2,6 +2,87 @@ const KEY="ecodata_mobile_v4";
 const samples=[];
 const DEMO_CLEANUP_KEY="ecodata_demo_cleanup_v1";
 
+/* =========================
+   SUPABASE — DATOS COMPARTIDOS
+   ========================= */
+const SUPABASE_URL = "https://axcygjpdfwcjwdwyxlpl.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable__EwVnv-w3DodsB80N1hRkA_xHwRG7M9";
+const SUPABASE_TABLE = "pesajes";
+let supabaseClient = null;
+
+function initSupabase(){
+  try{
+    if(window.supabase && typeof window.supabase.createClient === "function"){
+      supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+      return true;
+    }
+  }catch(err){ console.warn("Supabase no disponible:",err); }
+  return false;
+}
+function setSyncStatus(text, ok=false){
+  const el=$("syncStatus"); if(!el)return;
+  el.textContent=text; el.classList.toggle("sync-ok",ok);
+}
+function localId(){
+  if(window.crypto && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  return "local-"+Date.now()+"-"+Math.random().toString(16).slice(2);
+}
+function normalizeLocalRecords(records){
+  let changed=false;
+  const out=(Array.isArray(records)?records:[]).map(r=>{
+    const item={...r};
+    if(!item.id){item.id=localId();changed=true;}
+    if(item.observaciones==null)item.observaciones="";
+    if(item.empleado==null)item.empleado="";
+    return item;
+  });
+  if(changed)localStorage.setItem(KEY,JSON.stringify(out));
+  return out;
+}
+function recordToRemote(r){
+  return {id:String(r.id),fecha:String(r.fecha||""),hora:String(r.hora||""),sucursal:String(r.sucursal||"Sin sucursal"),empleado:String(r.empleado||""),peso:Number(r.peso||0),observaciones:String(r.observaciones||""),created_at:r.created_at||new Date().toISOString()};
+}
+function remoteToLocal(r){
+  return {id:String(r.id),fecha:String(r.fecha||""),hora:String(r.hora||""),sucursal:String(r.sucursal||"Sin sucursal"),empleado:String(r.empleado||""),peso:Number(r.peso||0),observaciones:String(r.observaciones||""),created_at:r.created_at||null};
+}
+async function syncWithSupabase(){
+  if(!supabaseClient){setSyncStatus("⚠️ Datos locales");return;}
+  try{
+    setSyncStatus("☁️ Sincronizando...");
+    const local=normalizeLocalRecords(data());
+    if(local.length){
+      const {error}=await supabaseClient.from(SUPABASE_TABLE).upsert(local.map(recordToRemote),{onConflict:"id"});
+      if(error)throw error;
+    }
+    const {data:remote,error:selectError}=await supabaseClient.from(SUPABASE_TABLE).select("id,fecha,hora,sucursal,empleado,peso,observaciones,created_at").order("created_at",{ascending:false});
+    if(selectError)throw selectError;
+    const merged=new Map();
+    (Array.isArray(remote)?remote:[]).forEach(r=>merged.set(String(r.id),remoteToLocal(r)));
+    local.forEach(r=>{if(!merged.has(String(r.id)))merged.set(String(r.id),r);});
+    const result=Array.from(merged.values()).sort((a,b)=>{
+      const da=a.created_at?new Date(a.created_at).getTime():0, db=b.created_at?new Date(b.created_at).getTime():0;
+      if(db!==da)return db-da;
+      return String(b.fecha+" "+b.hora).localeCompare(String(a.fecha+" "+a.hora));
+    });
+    localStorage.setItem(KEY,JSON.stringify(result));
+    render(); setSyncStatus("☁️ Datos sincronizados",true);
+  }catch(err){
+    console.error("Error sincronizando con Supabase:",err);
+    setSyncStatus(navigator.onLine?"⚠️ Error de sincronización":"📴 Sin conexión · guardado local");
+  }
+}
+async function syncSingleRecord(record){
+  if(!supabaseClient || !navigator.onLine)return false;
+  try{
+    const {error}=await supabaseClient.from(SUPABASE_TABLE).upsert([recordToRemote(record)],{onConflict:"id"});
+    if(error)throw error;
+    setSyncStatus("☁️ Datos sincronizados",true); return true;
+  }catch(err){
+    console.warn("El pesaje quedó pendiente de sincronización:",err);
+    setSyncStatus("📴 Guardado local · pendiente de sincronizar"); return false;
+  }
+}
+
 function removeDemoRecords(){
   if(localStorage.getItem(DEMO_CLEANUP_KEY)) return;
   try{
@@ -18,7 +99,7 @@ function removeDemoRecords(){
 }
 removeDemoRecords();
 const $=id=>document.getElementById(id);
-function data(){let d=JSON.parse(localStorage.getItem(KEY));if(!d){d=samples;localStorage.setItem(KEY,JSON.stringify(d))}return d}
+function data(){let d=JSON.parse(localStorage.getItem(KEY));if(!d){d=samples;localStorage.setItem(KEY,JSON.stringify(d))}return normalizeLocalRecords(d)}
 function save(d){localStorage.setItem(KEY,JSON.stringify(d));render()}
 function now(){let d=new Date();return{fecha:d.toLocaleDateString("es-AR"),hora:d.toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"})}}
 function kg(n){return Number(n).toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2})}
@@ -142,8 +223,9 @@ $("form").addEventListener("submit",e=>{
  if(!p||p<0)return toast("Ingresá un peso válido.");
  if(!$("sucursal").value)return toast("Escaneá primero el QR de la sucursal.");
  let n=now(),d=data();
- d.unshift({fecha:n.fecha,hora:n.hora,sucursal:$("sucursal").value,empleado:$("empleado").value,peso:p,observaciones:$("obs").value});
- save(d);$("form").reset();$("sucursal").value="";$("sucursalLabel").textContent="Sin identificar";$("branchAuto").classList.remove("identified");setQrStatus("Escaneá el QR de la sucursal","Usá la cámara para identificarla automáticamente.");screen("home");toast("✓ Pesaje guardado correctamente");
+ const record={id:localId(),fecha:n.fecha,hora:n.hora,sucursal:$("sucursal").value,empleado:$("empleado").value,peso:p,observaciones:$("obs").value,created_at:new Date().toISOString()};
+ d.unshift(record);
+ save(d);syncSingleRecord(record);$("form").reset();$("sucursal").value="";$("sucursalLabel").textContent="Sin identificar";$("branchAuto").classList.remove("identified");setQrStatus("Escaneá el QR de la sucursal","Usá la cámara para identificarla automáticamente.");screen("home");toast("✓ Pesaje guardado correctamente");
 });
 $("search").addEventListener("input",renderHistory);
 function toast(t){$("toast").textContent=t;$("toast").classList.add("show");clearTimeout(window.tt);window.tt=setTimeout(()=>$("toast").classList.remove("show"),2200)}
@@ -264,15 +346,24 @@ $("closeQrScanner").addEventListener("click",closeQrScanner);
 
 
 /* =========================
+   SINCRONIZACIÓN EN LA NUBE
+   ========================= */
+initSupabase();
+window.addEventListener("online",()=>syncWithSupabase());
+window.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")syncWithSupabase();});
+window.addEventListener("load",()=>setTimeout(()=>syncWithSupabase(),300));
+setInterval(()=>{if(document.visibilityState==="visible" && navigator.onLine)syncWithSupabase();},60000);
+
+/* =========================
    PWA — actualización automática
    ========================= */
 
-const APP_VERSION = "8";
+const APP_VERSION = "9";
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", async () => {
     try {
-      const reg = await navigator.serviceWorker.register("./service-worker-v8.js?v=" + APP_VERSION, {
+      const reg = await navigator.serviceWorker.register("./service-worker-v9.js?v=" + APP_VERSION, {
         scope: "./",
         updateViaCache: "none"
       });

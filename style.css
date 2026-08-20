@@ -1351,3 +1351,7 @@ textarea{
   .history-bar-value{font-size:5px}
   .history-bar-item small{font-size:6px}
 }
+
+
+/* Estado de sincronización con la nube */
+.sync-status{display:block;margin-top:4px;font-size:.72rem;letter-spacing:.08em;color:#6b7d74;font-weight:700}.sync-status.sync-ok{color:#2d7f58}

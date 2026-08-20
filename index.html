@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="EcoData">
 <title>EcoData Zento · Móvil</title>
-<link rel="stylesheet" href="./style.css?v=8">
+<link rel="stylesheet" href="./style.css?v=9">
   <!-- Lector QR mediante la cámara del dispositivo -->
   <script src="https://unpkg.com/html5-qrcode" defer></script>
   <link rel="manifest" href="./manifest.json">
@@ -25,7 +25,7 @@
 
 <main>
 <section id="home" class="screen active">
-  <div class="welcome"><small>GESTIÓN AMBIENTAL</small><h1>Hola 👋</h1><p>Registrá un pesaje en segundos.</p><small class="offline-ready">✓ Disponible sin conexión después de la primera carga</small></div>
+  <div class="welcome"><small>GESTIÓN AMBIENTAL</small><h1>Hola 👋</h1><p>Registrá un pesaje en segundos.</p><small class="offline-ready">✓ Disponible sin conexión después de la primera carga</small><small id="syncStatus" class="sync-status">☁️ Conectando datos...</small></div>
   <button class="hero-action" data-screen="registro"><span>＋</span><div><b>Nuevo pesaje</b><small>Cargar un dato</small></div><i>›</i></button>
   <div class="stats">
     <article><small>KG TOTALES</small><strong id="total">0,00</strong></article>
@@ -129,7 +129,8 @@
 <button data-screen="historial"><span>≡</span>Historial</button>
 </nav>
 <div id="toast" class="toast"></div>
-<script src="./app.js?v=8"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="./app.js?v=9"></script>
 </div>
 </body>
 </html>
