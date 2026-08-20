@@ -39,6 +39,41 @@ function normalizeLocalRecords(records){
   if(changed)localStorage.setItem(KEY,JSON.stringify(out));
   return out;
 }
+function toSupabaseTime(value){
+  // PostgreSQL espera HH:MM:SS. Aceptamos formatos locales como 03:54 p. m.
+  // y variantes con espacios/puntos, incluyendo caracteres Unicode.
+  let raw=String(value??"").trim().toLowerCase();
+  raw=raw.replace(/\u00a0/g," ").replace(/\s+/g," ").trim();
+
+  // Separar AM/PM antes de analizar la hora.
+  let mer="";
+  const merMatch=raw.match(/(?:^|\s)(a\s*\.?\s*m\.?|p\s*\.?\s*m\.?)[.!]?$/i);
+  if(merMatch){
+    mer=merMatch[1].replace(/[\s.]/g,"");
+    raw=raw.slice(0,merMatch.index).trim();
+  }
+
+  // También aceptar AM/PM pegado a la hora: 03:54pm / 03:54 p.m.
+  if(!mer){
+    const attached=raw.match(/(a\s*\.?\s*m\.?|p\s*\.?\s*m\.?)[.!]?$/i);
+    if(attached){
+      mer=attached[1].replace(/[\s.]/g,"");
+      raw=raw.slice(0,attached.index).trim();
+    }
+  }
+
+  const m=raw.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if(!m) return raw;
+
+  let h=Number(m[1]);
+  const min=Number(m[2]);
+  const sec=m[3]?Number(m[3]):0;
+  if(mer==="pm" && h<12) h+=12;
+  if(mer==="am" && h===12) h=0;
+  if(h<0||h>23||min<0||min>59||sec<0||sec>59) return raw;
+  return `${String(h).padStart(2,"0")}:${String(min).padStart(2,"0")}:${String(sec).padStart(2,"0")}`;
+}
+
 function toSupabaseDate(value){
   const raw=String(value||"").trim();
   let m=raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
@@ -57,7 +92,7 @@ function recordToRemote(r){
   return {
     id:String(r.id),
     fecha:toSupabaseDate(r.fecha),
-    hora:String(r.hora||""),
+    hora:toSupabaseTime(r.hora),
     sucursal:String(r.sucursal||"Sin sucursal"),
     empleado:String(r.empleado||""),
     peso:Number(r.peso||0),
@@ -201,7 +236,7 @@ removeDemoRecords();
 const $=id=>document.getElementById(id);
 function data(){let d=JSON.parse(localStorage.getItem(KEY));if(!d){d=samples;localStorage.setItem(KEY,JSON.stringify(d))}return normalizeLocalRecords(d)}
 function save(d){localStorage.setItem(KEY,JSON.stringify(d));render()}
-function now(){let d=new Date();return{fecha:d.toLocaleDateString("es-AR"),hora:d.toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"})}}
+function now(){let d=new Date();return{fecha:d.toLocaleDateString("es-AR"),hora:`${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`}}
 function kg(n){return Number(n).toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2})}
 function render(){
  const d=data(),total=d.reduce((s,r)=>s+Number(r.peso),0);
@@ -458,12 +493,12 @@ setInterval(()=>{if(document.visibilityState==="visible" && navigator.onLine)syn
    PWA — actualización automática
    ========================= */
 
-const APP_VERSION = "11";
+const APP_VERSION = "13";
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", async () => {
     try {
-      const reg = await navigator.serviceWorker.register("./service-worker-v11.js?v=" + APP_VERSION, {
+      const reg = await navigator.serviceWorker.register("./service-worker-v13.js?v=" + APP_VERSION, {
         scope: "./",
         updateViaCache: "none"
       });
