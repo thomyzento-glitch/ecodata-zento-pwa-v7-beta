@@ -493,12 +493,12 @@ setInterval(()=>{if(document.visibilityState==="visible" && navigator.onLine)syn
    PWA — actualización automática
    ========================= */
 
-const APP_VERSION = "13";
+const APP_VERSION = "14";
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", async () => {
     try {
-      const reg = await navigator.serviceWorker.register("./service-worker-v13.js?v=" + APP_VERSION, {
+      const reg = await navigator.serviceWorker.register("./service-worker-v14.js, {
         scope: "./",
         updateViaCache: "none"
       });
