@@ -1,6 +1,7 @@
 const KEY="ecodata_mobile_v4";
 const samples=[];
 const DEMO_CLEANUP_KEY="ecodata_demo_cleanup_v1";
+const PENDING_UPLOAD_KEY="ecodata_pending_uploads_v1";
 
 /* =========================
    SUPABASE — DATOS COMPARTIDOS
@@ -39,6 +40,22 @@ function normalizeLocalRecords(records){
   if(changed)localStorage.setItem(KEY,JSON.stringify(out));
   return out;
 }
+function pendingIds(){
+  try {
+    const raw=JSON.parse(localStorage.getItem(PENDING_UPLOAD_KEY)||"[]");
+    return new Set(Array.isArray(raw)?raw.map(String):[]);
+  } catch(_) { return new Set(); }
+}
+function savePendingIds(ids){
+  localStorage.setItem(PENDING_UPLOAD_KEY,JSON.stringify(Array.from(ids).map(String)));
+}
+function markPending(id){
+  const ids=pendingIds(); ids.add(String(id)); savePendingIds(ids);
+}
+function clearPending(id){
+  const ids=pendingIds(); ids.delete(String(id)); savePendingIds(ids);
+}
+
 function toSupabaseTime(value){
   // PostgreSQL espera HH:MM:SS. Aceptamos formatos locales como 03:54 p. m.
   // y variantes con espacios/puntos, incluyendo caracteres Unicode.
@@ -139,14 +156,14 @@ async function fetchRemoteRecords(){
 
 async function insertMissingLocalRecords(local,remote){
   const remoteIds=new Set(remote.map(r=>String(r.id)));
-  const pending=local.filter(r=>!remoteIds.has(String(r.id)));
+  const pendingSet=pendingIds();
+  const pending=local.filter(r=>pendingSet.has(String(r.id)) && !remoteIds.has(String(r.id)));
   if(!pending.length) return 0;
 
-  // Insertamos únicamente registros que todavía no existen en la nube.
-  // Así evitamos que un upsert dependa de permisos UPDATE y reducimos duplicados.
   const payload=pending.map(recordToRemote);
   const {error}=await supabaseClient.from(SUPABASE_TABLE).insert(payload);
   if(error) throw error;
+  pending.forEach(r=>clearPending(r.id));
   return pending.length;
 }
 
@@ -157,23 +174,16 @@ async function syncWithSupabase(){
   try{
     setSyncStatus("☁️ Sincronizando...");
 
-    // 1) Primero descargamos lo que ya existe en Supabase.
+    // Subimos únicamente registros nuevos que estén marcados como pendientes.
     let remote=await fetchRemoteRecords();
-
-    // 2) Comparamos contra el almacenamiento local y subimos solo lo pendiente.
     const local=normalizeLocalRecords(data());
     const inserted=await insertMissingLocalRecords(local,remote);
-
-    // 3) Volvemos a descargar para que todos los dispositivos queden con la misma fuente central.
     if(inserted) remote=await fetchRemoteRecords();
 
-    const merged=new Map();
-    remote.forEach(r=>merged.set(String(r.id),r));
-    local.forEach(r=>{
-      if(!merged.has(String(r.id))) merged.set(String(r.id),r);
-    });
-
-    const result=Array.from(merged.values()).sort((a,b)=>{
+    // Una vez sincronizado, Supabase es la fuente central.
+    // Esto permite que un registro eliminado en otro teléfono desaparezca
+    // también de este dispositivo y evita que vuelva a subirse.
+    const result=remote.sort((a,b)=>{
       const da=a.created_at?new Date(a.created_at).getTime():0;
       const db=b.created_at?new Date(b.created_at).getTime():0;
       if(db!==da)return db-da;
@@ -189,13 +199,13 @@ async function syncWithSupabase(){
 }
 
 async function syncSingleRecord(record){
+  markPending(record.id);
   if(!supabaseClient || !navigator.onLine){
     setSyncStatus("📴 Guardado local · pendiente de sincronizar");
     return false;
   }
 
   try{
-    // Comprobamos si el ID ya existe antes de insertar.
     const {data:existing,error:checkError}=await supabaseClient
       .from(SUPABASE_TABLE)
       .select("id")
@@ -210,11 +220,41 @@ async function syncSingleRecord(record){
       if(error) throw error;
     }
 
+    clearPending(record.id);
     setSyncStatus("☁️ Pesaje sincronizado",true);
     return true;
   }catch(err){
     showSyncError(err);
     return false;
+  }
+}
+
+async function deleteRecord(id){
+  const recordId=String(id);
+  if(!navigator.onLine || !supabaseClient){
+    toast("Necesitás conexión para eliminar el registro compartido.");
+    return;
+  }
+
+  const confirmed=window.confirm("¿Eliminar este registro?\n\nSe eliminará de Supabase y de todos los dispositivos sincronizados.");
+  if(!confirmed) return;
+
+  try{
+    setSyncStatus("☁️ Eliminando registro...");
+    const {error}=await supabaseClient
+      .from(SUPABASE_TABLE)
+      .delete()
+      .eq("id",recordId);
+    if(error) throw error;
+
+    clearPending(recordId);
+    const updated=data().filter(r=>String(r.id)!==recordId);
+    localStorage.setItem(KEY,JSON.stringify(updated));
+    render();
+    setSyncStatus(`☁️ Datos sincronizados · ${updated.length} registros`,true);
+    toast("✓ Registro eliminado correctamente");
+  }catch(err){
+    showSyncError(err);
   }
 }
 
@@ -343,7 +383,12 @@ function renderHistorical(records){
 function renderHistory(){
  const q=($("search")?.value||"").toLowerCase();
  const d=data().filter(r=>[r.fecha,r.hora,r.sucursal,r.empleado].join(" ").toLowerCase().includes(q));
- $("history").innerHTML=d.map(r=>`<div class="row"><div class="row-icon">KG</div><div class="row-info"><b>${safe(r.empleado)}</b><small>${safe(r.fecha)} · ${safe(r.hora)} · ${safe(r.sucursal)}</small></div><div class="row-weight">${kg(r.peso)} kg<small>${""}</small></div></div>`).join("")||'<div class="row">No se encontraron registros.</div>';
+ $("history").innerHTML=d.map(r=>`<div class="row">
+   <div class="row-icon">KG</div>
+   <div class="row-info"><b>${safe(r.empleado)}</b><small>${safe(r.fecha)} · ${safe(r.hora)} · ${safe(r.sucursal)}</small></div>
+   <div class="row-actions"><div class="row-weight">${kg(r.peso)} kg</div><button type="button" class="delete-record" data-delete-id="${safe(r.id)}" aria-label="Eliminar registro">Eliminar</button></div>
+ </div>`).join("")||'<div class="row">No se encontraron registros.</div>';
+ document.querySelectorAll("[data-delete-id]").forEach(btn=>btn.addEventListener("click",()=>deleteRecord(btn.dataset.deleteId)));
 }
 function safe(v){return String(v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}
 function screen(id){
@@ -360,7 +405,7 @@ $("form").addEventListener("submit",e=>{
  let n=now(),d=data();
  const record={id:localId(),fecha:n.fecha,hora:n.hora,sucursal:$("sucursal").value,empleado:$("empleado").value,peso:p,observaciones:$("obs").value,created_at:new Date().toISOString()};
  d.unshift(record);
- save(d);syncSingleRecord(record);$("form").reset();$("sucursal").value="";$("sucursalLabel").textContent="Sin identificar";$("branchAuto").classList.remove("identified");setQrStatus("Escaneá el QR de la sucursal","Usá la cámara para identificarla automáticamente.");screen("home");toast("✓ Pesaje guardado correctamente");
+ save(d);markPending(record.id);syncSingleRecord(record);$("form").reset();$("sucursal").value="";$("sucursalLabel").textContent="Sin identificar";$("branchAuto").classList.remove("identified");setQrStatus("Escaneá el QR de la sucursal","Usá la cámara para identificarla automáticamente.");screen("home");toast("✓ Pesaje guardado correctamente");
 });
 $("search").addEventListener("input",renderHistory);
 function toast(t){$("toast").textContent=t;$("toast").classList.add("show");clearTimeout(window.tt);window.tt=setTimeout(()=>$("toast").classList.remove("show"),2200)}
@@ -493,12 +538,12 @@ setInterval(()=>{if(document.visibilityState==="visible" && navigator.onLine)syn
    PWA — actualización automática
    ========================= */
 
-const APP_VERSION = "13";
+const APP_VERSION = "15";
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", async () => {
     try {
-      const reg = await navigator.serviceWorker.register("./service-worker-v13.js?v=" + APP_VERSION, {
+      const reg = await navigator.serviceWorker.register("./service-worker-v15.js", {
         scope: "./",
         updateViaCache: "none"
       });
