@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#183d2c">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="EcoData">
+<title>EcoData Zento · Móvil</title>
+<link rel="stylesheet" href="./style.css?v=7">
+  <!-- Lector QR mediante la cámara del dispositivo -->
+  <script src="https://unpkg.com/html5-qrcode" defer></script>
+  <link rel="manifest" href="./manifest.json">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+  <link rel="apple-touch-icon" href="./icons/icon-180.png">
+</head>
+<body>
+<div class="app">
+<header class="mobile-header">
+  <div class="brand"><img class="brand-logo" src="./assets/logo-zento-header.png" alt="Toyota ZENTO"><div><small>ECODATA · AMBIENTE</small></div></div>
+  <span class="site">● EcoData</span><button type="button" id="installApp" class="install-app">Instalar</button>
+</header>
+
+<main>
+<section id="home" class="screen active">
+  <div class="welcome"><small>GESTIÓN AMBIENTAL</small><h1>Hola 👋</h1><p>Registrá un pesaje en segundos.</p><small class="offline-ready">✓ Disponible sin conexión después de la primera carga</small></div>
+  <button class="hero-action" data-screen="registro"><span>＋</span><div><b>Nuevo pesaje</b><small>Cargar un dato</small></div><i>›</i></button>
+  <div class="stats">
+    <article><small>KG TOTALES</small><strong id="total">0,00</strong></article>
+    <article><small>REGISTROS</small><strong id="records">0</strong></article>
+  </div>
+
+  <section class="dashboard" aria-label="Dashboard ambiental">
+    <div class="section-title dashboard-title"><h2>Resumen ambiental</h2><small id="dashboardPeriod">Actualizado hoy</small></div>
+    <div class="dashboard-grid">
+      <article class="dashboard-card">
+        <span class="dashboard-icon">↗</span>
+        <div><small>ESTE MES</small><strong id="monthKg">0,00 kg</strong><em id="monthRecords">0 registros</em></div>
+      </article>
+      <article class="dashboard-card">
+        <span class="dashboard-icon">Ø</span>
+        <div><small>PROMEDIO</small><strong id="averageKg">0,00 kg</strong><em>por registro</em></div>
+      </article>
+      <article class="dashboard-card dashboard-wide">
+        <span class="dashboard-icon">★</span>
+        <div><small>SUCURSAL CON MÁS KG</small><strong id="topBranch">Sin datos</strong><em id="topBranchKg">0,00 kg acumulados</em></div>
+      </article>
+    </div>
+
+    <div class="branch-dashboard">
+      <div class="branch-dashboard-head"><b>Distribución por sucursal</b><small id="branchCount">Sin registros</small></div>
+      <div id="branchBars" class="branch-bars"></div>
+    </div>
+  </section>
+
+  <div class="section-title"><h2>Actividad reciente</h2><button data-screen="historial">Ver todo</button></div>
+  <div id="recent" class="list"></div>
+</section>
+
+<section id="registro" class="screen">
+  <div class="screen-head"><button class="back" data-screen="home">‹</button><div><small>NUEVO REGISTRO</small><h1>Registrar pesaje</h1></div></div>
+  <div class="qr-mini" id="qrStatus">
+    <span>⌁</span>
+    <div>
+      <b id="qrStatusTitle">Escaneá el QR de la sucursal</b>
+      <small id="qrStatusText">Usá la cámara para completar la sucursal automáticamente.</small>
+    </div>
+    <button type="button" class="qr-scan-btn" id="openQrScanner">Escanear QR</button>
+  </div>
+
+  <div id="qrScanner" class="qr-scanner" hidden>
+    <div class="qr-scanner-head">
+      <div>
+        <b>Escanear código QR</b>
+        <small>Apuntá la cámara al código de la sucursal.</small>
+      </div>
+      <button type="button" id="closeQrScanner" aria-label="Cerrar">×</button>
+    </div>
+    <div id="qr-reader"></div>
+    <p id="qrError" class="qr-error"></p>
+  </div>
+  <form id="form">
+    <div class="field-row">
+      <label>Fecha<input id="fecha" readonly></label>
+      <label>Hora<input id="hora" readonly></label>
+    </div>
+    <div class="branch-auto" id="branchAuto"><span>●</span><div><small>SUCURSAL</small><b id="sucursalLabel">Sin identificar</b></div><input id="sucursal" type="hidden" value=""></div>
+    <label>Responsable<select id="empleado"><option>Nadia</option><option>Dina</option><option>Soledad</option><option>Cecilia</option><option>Maria Belen</option><option>Mirna</option><option>Otro</option></select></label>
+    <label>Peso <em>*</em><div class="kg-input"><input id="peso" type="number" min="0" step=".01" inputmode="decimal" placeholder="0,00" required><b>kg</b></div></label>
+    <label>Observaciones <small>(opcional)</small><textarea id="obs" placeholder="Escribí algo si hace falta..."></textarea></label>
+    <button class="submit" type="submit">Guardar pesaje <span>→</span></button>
+  </form>
+</section>
+
+<section id="historial" class="screen">
+  <div class="screen-head"><button class="back" data-screen="home">‹</button><div><small>REGISTROS</small><h1>Historial</h1></div></div>
+  <div class="search">⌕<input id="search" placeholder="Buscar..."></div>
+  <div id="history" class="history"></div>
+</section>
+</main>
+
+<nav class="bottom-nav">
+<button class="active" data-screen="home"><span>⌂</span>Inicio</button>
+<button data-screen="registro"><span>＋</span>Pesaje</button>
+<button data-screen="historial"><span>≡</span>Historial</button>
+</nav>
+<div id="toast" class="toast"></div>
+<script src="./app.js?v=7"></script>
+</div>
+</body>
+</html>

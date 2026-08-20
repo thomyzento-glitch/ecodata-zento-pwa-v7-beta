@@ -1,0 +1,7 @@
+QR FIJOS DE ECODATA ZENTO
+
+QR_Lanus.png -> LANUS -> Sucursal Lanús
+QR_Adrogue.png -> ADROGUE -> Sucursal Adrogué
+QR_Canning.png -> CANNING -> Sucursal Canning
+
+El sistema acepta únicamente estos tres valores (también dentro de JSON con la clave sucursal).
