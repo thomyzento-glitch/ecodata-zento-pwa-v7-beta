@@ -110,12 +110,9 @@ function fromSupabaseDate(value){
    ENVÍO A GOOGLE SHEETS
    ========================= */
 async function sendToGoogleSheets(record){
-
   if(!GOOGLE_SCRIPT_URL || GOOGLE_SCRIPT_URL.includes("TU_SCRIPT_ID_AQUI")) return;
-  
   try{
-    const pesoLimpio = String(record.peso || "0").replace(",", ".");
-    const pesoNum = parseFloat(pesoLimpio) || 0;
+    const pesoRaw = record.peso !== undefined ? record.peso : 0;
 
     await fetch(GOOGLE_SCRIPT_URL, {
       method: "POST",
@@ -127,11 +124,11 @@ async function sendToGoogleSheets(record){
         hora: record.hora,
         sucursal: record.sucursal,
         empleado: record.empleado,
-        peso: pesoNum,
+        peso: pesoRaw,
         observaciones: record.observaciones || ""
       })
     });
-    console.info("Enviado a Google Sheets correctamente:", pesoNum);
+    console.info("Enviado a Google Sheets:", pesoRaw);
   }catch(err){
     console.warn("Error enviando a Google Sheets:", err);
   }
