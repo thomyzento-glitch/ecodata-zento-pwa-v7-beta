@@ -4,11 +4,15 @@ const DEMO_CLEANUP_KEY="ecodata_demo_cleanup_v1";
 const PENDING_UPLOAD_KEY="ecodata_pending_uploads_v1";
 
 /* =========================
-   SUPABASE — DATOS COMPARTIDOS
+   SUPABASE Y GOOGLE SHEETS
    ========================= */
 const SUPABASE_URL = "https://axcygjpdfwcjwdwyxlpl.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable__EwVnv-w3DodsB80N1hRkA_xHwRG7M9";
 const SUPABASE_TABLE = "pesajes";
+
+// ⚠️ REEMPLAZÁ ESTA URL CON LA QUE TE DA GOOGLE APPS SCRIPT AL DESPLEGAR
+const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxY_j-4NutBQcG_F1jY-OdynmLbSkqfGdR2DRXmcRyirn65ZxMMIZNKBR8K8b5m4MfX8Q/exec";
+
 let supabaseClient = null;
 
 function initSupabase(){
@@ -57,12 +61,9 @@ function clearPending(id){
 }
 
 function toSupabaseTime(value){
-  // PostgreSQL espera HH:MM:SS. Aceptamos formatos locales como 03:54 p. m.
-  // y variantes con espacios/puntos, incluyendo caracteres Unicode.
   let raw=String(value??"").trim().toLowerCase();
   raw=raw.replace(/\u00a0/g," ").replace(/\s+/g," ").trim();
 
-  // Separar AM/PM antes de analizar la hora.
   let mer="";
   const merMatch=raw.match(/(?:^|\s)(a\s*\.?\s*m\.?|p\s*\.?\s*m\.?)[.!]?$/i);
   if(merMatch){
@@ -70,7 +71,6 @@ function toSupabaseTime(value){
     raw=raw.slice(0,merMatch.index).trim();
   }
 
-  // También aceptar AM/PM pegado a la hora: 03:54pm / 03:54 p.m.
   if(!mer){
     const attached=raw.match(/(a\s*\.?\s*m\.?|p\s*\.?\s*m\.?)[.!]?$/i);
     if(attached){
@@ -105,6 +105,33 @@ function fromSupabaseDate(value){
   if(m) return `${Number(m[3])}/${Number(m[2])}/${m[1]}`;
   return raw;
 }
+
+/* =========================
+   ENVÍO A GOOGLE SHEETS
+   ========================= */
+async function sendToGoogleSheets(record){
+  if(!GOOGLE_SCRIPT_URL || GOOGLE_SCRIPT_URL.includes("TU_SCRIPT_ID_AQUI")) return;
+  try{
+    await fetch(GOOGLE_SCRIPT_URL, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: record.id,
+        fecha: record.fecha,
+        hora: record.hora,
+        sucursal: record.sucursal,
+        empleado: record.empleado,
+        peso: record.peso,
+        observaciones: record.observaciones || ""
+      })
+    });
+    console.info("Enviado a Google Sheets correctamente");
+  }catch(err){
+    console.warn("Error enviando a Google Sheets:", err);
+  }
+}
+
 function recordToRemote(r){
   return {
     id:String(r.id),
@@ -163,7 +190,11 @@ async function insertMissingLocalRecords(local,remote){
   const payload=pending.map(recordToRemote);
   const {error}=await supabaseClient.from(SUPABASE_TABLE).insert(payload);
   if(error) throw error;
-  pending.forEach(r=>clearPending(r.id));
+  
+  pending.forEach(r=>{ 
+    clearPending(r.id); 
+    sendToGoogleSheets(r); 
+  });
   return pending.length;
 }
 
@@ -174,15 +205,11 @@ async function syncWithSupabase(){
   try{
     setSyncStatus("☁️ Sincronizando...");
 
-    // Subimos únicamente registros nuevos que estén marcados como pendientes.
     let remote=await fetchRemoteRecords();
     const local=normalizeLocalRecords(data());
     const inserted=await insertMissingLocalRecords(local,remote);
     if(inserted) remote=await fetchRemoteRecords();
 
-    // Una vez sincronizado, Supabase es la fuente central.
-    // Esto permite que un registro eliminado en otro teléfono desaparezca
-    // también de este dispositivo y evita que vuelva a subirse.
     const result=remote.sort((a,b)=>{
       const da=a.created_at?new Date(a.created_at).getTime():0;
       const db=b.created_at?new Date(b.created_at).getTime():0;
@@ -221,6 +248,7 @@ async function syncSingleRecord(record){
     }
 
     clearPending(record.id);
+    sendToGoogleSheets(record);
     setSyncStatus("☁️ Pesaje sincronizado",true);
     return true;
   }catch(err){
@@ -598,4 +626,3 @@ if (installButton) {
     updateInstallButton();
   });
 }
-
