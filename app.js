@@ -110,15 +110,17 @@ function fromSupabaseDate(value){
    ENVÍO A GOOGLE SHEETS
    ========================= */
 async function sendToGoogleSheets(record){
-  if(!GOOGLE_SCRIPT_URL || GOOGLE_SCRIPT_URL.includes("https://script.google.com/macros/s/AKfycbwKxVC8Wn6GlZzlHA6ypOm5Qvo0wY77VGGDxvFq1bWK3we3IRlIco87ATvjg3nCoXBGvQ/exec")) return;
+
+  if(!GOOGLE_SCRIPT_URL || GOOGLE_SCRIPT_URL.includes("TU_SCRIPT_ID_AQUI")) return;
+  
   try{
-    // Convertimos peso explícitamente a número
-    const pesoNum = Number(record.peso) || 0;
+    const pesoLimpio = String(record.peso || "0").replace(",", ".");
+    const pesoNum = parseFloat(pesoLimpio) || 0;
 
     await fetch(GOOGLE_SCRIPT_URL, {
       method: "POST",
       mode: "no-cors",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "text/plain" },
       body: JSON.stringify({
         id: record.id,
         fecha: record.fecha,
