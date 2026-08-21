@@ -137,7 +137,9 @@ async function sendToGoogleSheets(record){
     hora: record.hora || "",
     sucursal: record.sucursal || "",
     empleado: record.empleado || "",
+    // IMPORTANTE: peso se envía siempre como número, nunca como 0 por defecto.
     peso: pesoCheck.value,
+    pesoKg: pesoCheck.value,
     observaciones: record.observaciones || ""
   };
 
@@ -151,7 +153,7 @@ async function sendToGoogleSheets(record){
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify(payload)
     });
-    console.info("Enviado a Google Sheets:", payload.peso);
+    console.info("Enviado a Google Sheets:", payload);
     return true;
   }catch(err){
     console.warn("Error enviando a Google Sheets:", err);
@@ -218,10 +220,10 @@ async function insertMissingLocalRecords(local,remote){
   const {error}=await supabaseClient.from(SUPABASE_TABLE).insert(payload);
   if(error) throw error;
   
-  pending.forEach(r=>{ 
-    clearPending(r.id); 
-    sendToGoogleSheets(r); 
-  });
+  for (const r of pending) {
+    clearPending(r.id);
+    await sendToGoogleSheets(r);
+  }
   return pending.length;
 }
 
@@ -275,8 +277,12 @@ async function syncSingleRecord(record){
     }
 
     clearPending(record.id);
-    sendToGoogleSheets(record);
-    setSyncStatus("☁️ Pesaje sincronizado",true);
+    const sheetsOk = await sendToGoogleSheets(record);
+    if (!sheetsOk) {
+      setSyncStatus("⚠️ Supabase OK · Google Sheets no confirmó el envío", false);
+    } else {
+      setSyncStatus("☁️ Pesaje sincronizado",true);
+    }
     return true;
   }catch(err){
     showSyncError(err);

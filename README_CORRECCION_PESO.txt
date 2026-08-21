@@ -20,3 +20,10 @@ CAMBIOS
 
 IMPORTANTE
 El ZIP original no contiene el código actualmente desplegado en Google Apps Script. Por eso no es posible demostrar desde el ZIP qué línea de ese proyecto desplegado convierte el peso en 0. Copiá GoogleAppsScript_Code.gs en Apps Script, conservando cualquier selección específica de Spreadsheet/Sheet que uses si no es ActiveSpreadsheet/ActiveSheet, y creá una nueva implementación del Web App. Luego actualizá GOOGLE_SCRIPT_URL si Apps Script te entrega una URL distinta.
+
+
+CORRECCIÓN APLICADA EN ESTA VERSIÓN
+- app.js envía peso y pesoKg como el mismo valor numérico validado.
+- syncSingleRecord espera el envío a Google Sheets y muestra si Sheets falló.
+- GoogleAppsScript_Code.gs rechaza pesos ausentes o inválidos; nunca los transforma silenciosamente a 0.
+- El Apps Script registra en Logger el peso recibido y el peso final escrito.
