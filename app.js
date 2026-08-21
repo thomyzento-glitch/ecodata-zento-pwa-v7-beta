@@ -110,7 +110,7 @@ function fromSupabaseDate(value){
    ENVÍO A GOOGLE SHEETS
    ========================= */
 async function sendToGoogleSheets(record){
-  if(!GOOGLE_SCRIPT_URL || GOOGLE_SCRIPT_URL.includes("TU_SCRIPT_ID_AQUI")) return;
+  if(!GOOGLE_SCRIPT_URL || GOOGLE_SCRIPT_URL.includes("https://script.google.com/macros/s/AKfycbwKxVC8Wn6GlZzlHA6ypOm5Qvo0wY77VGGDxvFq1bWK3we3IRlIco87ATvjg3nCoXBGvQ/exec")) return;
   try{
     // Convertimos peso explícitamente a número
     const pesoNum = Number(record.peso) || 0;
