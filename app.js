@@ -428,14 +428,39 @@ function screen(id){
  window.scrollTo(0,0);
 }
 document.querySelectorAll("[data-screen]").forEach(b=>b.addEventListener("click",()=>screen(b.dataset.screen)));
-$("form").addEventListener("submit",e=>{
- e.preventDefault();let p=Number($("peso").value);
- if(!p||p<0)return toast("Ingresá un peso válido.");
- if(!$("sucursal").value)return toast("Escaneá primero el QR de la sucursal.");
- let n=now(),d=data();
- const record={id:localId(),fecha:n.fecha,hora:n.hora,sucursal:$("sucursal").value,empleado:$("empleado").value,peso:p,observaciones:$("obs").value,created_at:new Date().toISOString()};
- d.unshift(record);
- save(d);markPending(record.id);syncSingleRecord(record);$("form").reset();$("sucursal").value="";$("sucursalLabel").textContent="Sin identificar";$("branchAuto").classList.remove("identified");setQrStatus("Escaneá el QR de la sucursal","Usá la cámara para identificarla automáticamente.");screen("home");toast("✓ Pesaje guardado correctamente");
+$("form").addEventListener("submit", e => {
+  e.preventDefault();
+  
+  // Leemos el texto del campo y convertimos comas a puntos decimales
+  const valorTexto = String($("peso").value || "").trim().replace(",", ".");
+  let p = parseFloat(valorTexto);
+
+  if (!p || isNaN(p) || p <= 0) return toast("Ingresá un peso válido mayor a 0.");
+  if (!$("sucursal").value) return toast("Escaneá primero el QR de la sucursal.");
+  
+  let n = now(), d = data();
+  const record = {
+    id: localId(),
+    fecha: n.fecha,
+    hora: n.hora,
+    sucursal: $("sucursal").value,
+    empleado: $("empleado").value,
+    peso: p, // <--- Ahora 'p' ya es un número real válido (ej: 25.5)
+    observaciones: $("obs").value,
+    created_at: new Date().toISOString()
+  };
+  
+  d.unshift(record);
+  save(d);
+  markPending(record.id);
+  syncSingleRecord(record);
+  $("form").reset();
+  $("sucursal").value = "";
+  $("sucursalLabel").textContent = "Sin identificar";
+  $("branchAuto").classList.remove("identified");
+  setQrStatus("Escaneá el QR de la sucursal", "Usá la cámara para identificarla automáticamente.");
+  screen("home");
+  toast("✓ Pesaje guardado correctamente");
 });
 $("search").addEventListener("input",renderHistory);
 function toast(t){$("toast").textContent=t;$("toast").classList.add("show");clearTimeout(window.tt);window.tt=setTimeout(()=>$("toast").classList.remove("show"),2200)}
