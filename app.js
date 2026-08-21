@@ -112,6 +112,9 @@ function fromSupabaseDate(value){
 async function sendToGoogleSheets(record){
   if(!GOOGLE_SCRIPT_URL || GOOGLE_SCRIPT_URL.includes("TU_SCRIPT_ID_AQUI")) return;
   try{
+    // Convertimos peso explícitamente a número
+    const pesoNum = Number(record.peso) || 0;
+
     await fetch(GOOGLE_SCRIPT_URL, {
       method: "POST",
       mode: "no-cors",
@@ -122,11 +125,11 @@ async function sendToGoogleSheets(record){
         hora: record.hora,
         sucursal: record.sucursal,
         empleado: record.empleado,
-        peso: record.peso,
+        peso: pesoNum,
         observaciones: record.observaciones || ""
       })
     });
-    console.info("Enviado a Google Sheets correctamente");
+    console.info("Enviado a Google Sheets correctamente:", pesoNum);
   }catch(err){
     console.warn("Error enviando a Google Sheets:", err);
   }
@@ -566,7 +569,7 @@ setInterval(()=>{if(document.visibilityState==="visible" && navigator.onLine)syn
    PWA — actualización automática
    ========================= */
 
-const APP_VERSION = "15";
+const APP_VERSION = "16";
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", async () => {
