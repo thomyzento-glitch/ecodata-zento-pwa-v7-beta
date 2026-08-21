@@ -1,5 +1,5 @@
-/* EcoData Zento PWA - Service Worker v15 para GitHub Pages */
-const CACHE_NAME = "ecodata-zento-v15-github-pages";
+/* EcoData Zento PWA - Service Worker v16 para GitHub Pages */
+const CACHE_NAME = "ecodata-zento-v16-github-pages";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -32,7 +32,7 @@ self.addEventListener("activate", event => {
       .then(() => self.clients.matchAll({ type: "window", includeUncontrolled: true }))
       .then(clients => {
         clients.forEach(client => {
-          client.postMessage({ type: "APP_UPDATED", version: "v15" });
+          client.postMessage({ type: "APP_UPDATED", version: "v16" });
         });
       })
   );
@@ -44,7 +44,7 @@ function isSameOrigin(request) {
 
 function isCoreFile(request) {
   const pathname = new URL(request.url).pathname;
-  return /\/(index\.html|style\.css|app\.js|manifest\.json|service-worker-v15\.js)$/.test(pathname);
+  return /\/(index\.html|style\.css|app\.js|manifest\.json|service-worker-v16\.js)$/.test(pathname);
 }
 
 async function networkFirst(request) {
