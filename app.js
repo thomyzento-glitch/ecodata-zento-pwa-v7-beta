@@ -32,40 +32,6 @@ function localId(){
   if(window.crypto && typeof crypto.randomUUID === "function") return crypto.randomUUID();
   return "local-"+Date.now()+"-"+Math.random().toString(16).slice(2);
 }
-function normalizePeso(value){
-  if (typeof value === "number") {
-    return Number.isFinite(value) ? value : NaN;
-  }
-
-  if (value === null || value === undefined) return NaN;
-
-  let raw = String(value)
-    .trim()
-    .replace(/\u00a0/g, "")
-    .replace(/\s+/g, "");
-
-  if (!raw) return NaN;
-
-  // Admite formatos: 12.5, 12,5, 1.234,56 y 1,234.56
-  if (raw.includes(",") && raw.includes(".")) {
-    if (raw.lastIndexOf(",") > raw.lastIndexOf(".")) {
-      raw = raw.replace(/\./g, "").replace(",", ".");
-    } else {
-      raw = raw.replace(/,/g, "");
-    }
-  } else if (raw.includes(",")) {
-    raw = raw.replace(",", ".");
-  }
-
-  const n = Number(raw);
-  return Number.isFinite(n) ? n : NaN;
-}
-
-function normalizePesoForStorage(value){
-  const n = normalizePeso(value);
-  return Number.isFinite(n) ? n : 0;
-}
-
 function normalizeLocalRecords(records){
   let changed=false;
   const out=(Array.isArray(records)?records:[]).map(r=>{
@@ -73,7 +39,6 @@ function normalizeLocalRecords(records){
     if(!item.id){item.id=localId();changed=true;}
     if(item.observaciones==null)item.observaciones="";
     if(item.empleado==null)item.empleado="";
-    item.peso=normalizePesoForStorage(item.peso);
     return item;
   });
   if(changed)localStorage.setItem(KEY,JSON.stringify(out));
@@ -145,49 +110,27 @@ function fromSupabaseDate(value){
    ENVÍO A GOOGLE SHEETS
    ========================= */
 async function sendToGoogleSheets(record){
-  if(!GOOGLE_SCRIPT_URL || GOOGLE_SCRIPT_URL.includes("TU_SCRIPT_ID_AQUI")){
-    console.warn("Google Apps Script URL no configurada.");
-    return false;
-  }
-
-  const peso = normalizePeso(record.peso);
-
-  if(!Number.isFinite(peso) || peso <= 0){
-    console.error("EcoData · peso inválido antes de enviar a Google Sheets:", record.peso);
-    return false;
-  }
-
-  const payload = {
-    id: String(record.id || ""),
-    fecha: String(record.fecha || ""),
-    hora: String(record.hora || ""),
-    sucursal: String(record.sucursal || ""),
-    empleado: String(record.empleado || ""),
-    peso: peso,
-    observaciones: String(record.observaciones || "")
-  };
-
+  if(!GOOGLE_SCRIPT_URL || GOOGLE_SCRIPT_URL.includes("TU_SCRIPT_ID_AQUI")) return;
   try{
-    console.info("EcoData · enviando a Google Sheets:", payload);
-
-    // application/x-www-form-urlencoded evita problemas de preflight/CORS
-    // y Apps Script lo recibe en e.parameter.payload.
-    const body = "payload=" + encodeURIComponent(JSON.stringify(payload));
+    const pesoRaw = record.peso !== undefined ? record.peso : 0;
 
     await fetch(GOOGLE_SCRIPT_URL, {
       method: "POST",
       mode: "no-cors",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"
-      },
-      body
+      headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify({
+        id: record.id,
+        fecha: record.fecha,
+        hora: record.hora,
+        sucursal: record.sucursal,
+        empleado: record.empleado,
+        peso: pesoRaw,
+        observaciones: record.observaciones || ""
+      })
     });
-
-    console.info("EcoData · enviado a Google Sheets. Peso:", peso);
-    return true;
+    console.info("Enviado a Google Sheets:", pesoRaw);
   }catch(err){
-    console.warn("EcoData · error enviando a Google Sheets:", err);
-    return false;
+    console.warn("Error enviando a Google Sheets:", err);
   }
 }
 
@@ -198,7 +141,7 @@ function recordToRemote(r){
     hora:toSupabaseTime(r.hora),
     sucursal:String(r.sucursal||"Sin sucursal"),
     empleado:String(r.empleado||""),
-    peso:normalizePesoForStorage(r.peso),
+    peso:Number(r.peso||0),
     observaciones:String(r.observaciones||""),
     created_at:r.created_at||new Date().toISOString()
   };
@@ -210,7 +153,7 @@ function remoteToLocal(r){
     hora:String(r.hora||""),
     sucursal:String(r.sucursal||"Sin sucursal"),
     empleado:String(r.empleado||""),
-    peso:normalizePesoForStorage(r.peso),
+    peso:Number(r.peso||0),
     observaciones:String(r.observaciones||""),
     created_at:r.created_at||null
   };
@@ -251,8 +194,8 @@ async function insertMissingLocalRecords(local,remote){
   if(error) throw error;
   
   pending.forEach(r=>{ 
-    clearPending(r.id);
-    sendToGoogleSheets(r);
+    clearPending(r.id); 
+    sendToGoogleSheets(r); 
   });
   return pending.length;
 }
@@ -366,7 +309,7 @@ function save(d){localStorage.setItem(KEY,JSON.stringify(d));render()}
 function now(){let d=new Date();return{fecha:d.toLocaleDateString("es-AR"),hora:`${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`}}
 function kg(n){return Number(n).toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2})}
 function render(){
- const d=data(),total=d.reduce((s,r)=>s+normalizePesoForStorage(r.peso),0);
+ const d=data(),total=d.reduce((s,r)=>s+Number(r.peso),0);
  $("total").textContent=kg(total);$("records").textContent=d.length;
  renderDashboard(d);
  renderHistorical(d);
@@ -395,8 +338,8 @@ function renderDashboard(records){
     const d=parseRecordDate(r);
     return d && d.getFullYear()===nowDate.getFullYear() && d.getMonth()===nowDate.getMonth();
   });
-  const monthKg=monthRecords.reduce((s,r)=>s+normalizePesoForStorage(r.peso),0);
-  const totalKg=records.reduce((s,r)=>s+normalizePesoForStorage(r.peso),0);
+  const monthKg=monthRecords.reduce((s,r)=>s+Number(r.peso||0),0);
+  const totalKg=records.reduce((s,r)=>s+Number(r.peso||0),0);
   const average=records.length?totalKg/records.length:0;
 
   $("monthKg").textContent=`${kg(monthKg)} kg`;
@@ -407,7 +350,7 @@ function renderDashboard(records){
   const branches={};
   records.forEach(r=>{
     const name=String(r.sucursal||"Sin sucursal").trim()||"Sin sucursal";
-    branches[name]=(branches[name]||0)+normalizePesoForStorage(r.peso);
+    branches[name]=(branches[name]||0)+Number(r.peso||0);
   });
   const branchEntries=Object.entries(branches).sort((a,b)=>b[1]-a[1]);
   if(branchEntries.length){
@@ -436,7 +379,7 @@ function renderHistorical(records){
   records.forEach(r=>{
     const d=parseRecordDate(r);
     if(d && d.getFullYear()===year){
-      monthly[d.getMonth()]+=normalizePesoForStorage(r.peso);
+      monthly[d.getMonth()]+=Number(r.peso||0);
       validRecords++;
     }
   });
@@ -486,10 +429,8 @@ function screen(id){
 }
 document.querySelectorAll("[data-screen]").forEach(b=>b.addEventListener("click",()=>screen(b.dataset.screen)));
 $("form").addEventListener("submit",e=>{
- e.preventDefault();
- const pesoInput=$("peso").value;
- const p=normalizePeso(pesoInput);
- if(!Number.isFinite(p) || p<=0)return toast("Ingresá un peso válido mayor a 0.");
+ e.preventDefault();let p=Number($("peso").value);
+ if(!p||p<0)return toast("Ingresá un peso válido.");
  if(!$("sucursal").value)return toast("Escaneá primero el QR de la sucursal.");
  let n=now(),d=data();
  const record={id:localId(),fecha:n.fecha,hora:n.hora,sucursal:$("sucursal").value,empleado:$("empleado").value,peso:p,observaciones:$("obs").value,created_at:new Date().toISOString()};
@@ -627,12 +568,12 @@ setInterval(()=>{if(document.visibilityState==="visible" && navigator.onLine)syn
    PWA — actualización automática
    ========================= */
 
-const APP_VERSION = "17";
+const APP_VERSION = "16";
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", async () => {
     try {
-      const reg = await navigator.serviceWorker.register("./service-worker-v16.js", {
+      const reg = await navigator.serviceWorker.register("./service-worker-v15.js", {
         scope: "./",
         updateViaCache: "none"
       });
