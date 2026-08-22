@@ -10,7 +10,7 @@ const SUPABASE_URL = "https://axcygjpdfwcjwdwyxlpl.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable__EwVnv-w3DodsB80N1hRkA_xHwRG7M9";
 const SUPABASE_TABLE = "pesajes";
 
-// ⚠️ REEMPLAZÁ ESTA URL CON LA QUE TE DA GOOGLE APPS SCRIPT AL DESPLEGAR
+// URL de tu Google Apps Script
 const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyIaC2CA8ClARapE-kVY5wyVXYnfq0WkRurDJFWv2KHJp7gxn6mgZGn3Umcx06T0ee2/exec";
 
 let supabaseClient = null;
@@ -107,7 +107,7 @@ function fromSupabaseDate(value){
 }
 
 /* =========================
-   ENVÍO A GOOGLE SHEETS
+   ENVÍO A GOOGLE SHEETS (CORREGIDO)
    ========================= */
 function normalizePeso(value){
   if(value === undefined || value === null || String(value).trim() === ""){
@@ -132,8 +132,8 @@ async function sendToGoogleSheets(record){
   }
 
   const payload = {
-    fecha: record.fecha || "",
-    hora: record.hora || "",
+    fecha: record.fecha || new Date().toLocaleDateString("es-AR"),
+    hora: record.hora || new Date().toLocaleTimeString("es-AR", { hour: '2-digit', minute: '2-digit' }),
     sucursal: record.sucursal || "",
     empleada: record.empleado || record.empleada || "",
     peso: pesoCheck.value,
@@ -141,14 +141,25 @@ async function sendToGoogleSheets(record){
   };
 
   try{
-    // NO usamos mode: "no-cors" para que envíe el cuerpo del JSON adecuadamente
+    // Usamos x-www-form-urlencoded para que Google Apps Script reciba directamente el payload en e.parameter o e.postData sin bloqueos de CORS
+    const bodyParams = new URLSearchParams();
+    bodyParams.append("fecha", payload.fecha);
+    bodyParams.append("hora", payload.hora);
+    bodyParams.append("sucursal", payload.sucursal);
+    bodyParams.append("empleada", payload.empleada);
+    bodyParams.append("peso", payload.peso);
+    bodyParams.append("notas", payload.notas);
+
     await fetch(GOOGLE_SCRIPT_URL, {
       method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify(payload)
+      mode: "no-cors",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: bodyParams.toString()
     });
     
-    console.info("Petición enviada a Google Sheets:", payload);
+    console.info("Petición enviada a Google Sheets con éxito:", payload);
     return true;
   }catch(err){
     console.warn("Error enviando a Google Sheets:", err);
@@ -458,14 +469,11 @@ $("form").addEventListener("submit",e=>{
  e.preventDefault();
  const pesoInput=$("peso").value;
  const pesoCheck=normalizePeso(pesoInput);
- console.log("PESO DEL INPUT:", pesoInput);
- console.log("PESO CONVERTIDO:", pesoCheck.ok ? pesoCheck.value : undefined);
  if(!pesoCheck.ok || pesoCheck.value<0)return toast("Ingresá un peso válido.");
  const p=pesoCheck.value;
  if(!$("sucursal").value)return toast("Escaneá primero el QR de la sucursal.");
  let n=now(),d=data();
  const record={id:localId(),fecha:n.fecha,hora:n.hora,sucursal:$("sucursal").value,empleado:$("empleado").value,peso:p,observaciones:$("obs").value,created_at:new Date().toISOString()};
- console.log("RECORD:",record);
  d.unshift(record);
  save(d);markPending(record.id);syncSingleRecord(record);$("form").reset();$("sucursal").value="";$("sucursalLabel").textContent="Sin identificar";$("branchAuto").classList.remove("identified");setQrStatus("Escaneá el QR de la sucursal","Usá la cámara para identificarla automáticamente.");screen("home");toast("✓ Pesaje guardado correctamente");
 });
@@ -659,33 +667,4 @@ if (installButton) {
     deferredInstallPrompt = null;
     updateInstallButton();
   });
-}
-
-async function enviarPesajeAGoogleSheets(datos) {
-  const ahora = new Date();
-  
-  // Separar fecha y hora
-  const fechaHoy = ahora.toLocaleDateString("es-AR");
-  const horaHoy = ahora.toLocaleTimeString("es-AR", { hour: '2-digit', minute: '2-digit' });
-
-  try {
-    await fetch(GOOGLE_SCRIPT_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "text/plain;charset=utf-8",
-      },
-      body: JSON.stringify({
-        fecha: fechaHoy,          // Ej: "21/8/2026"
-        hora: horaHoy,            // Ej: "22:32"
-        sucursal: datos.sucursal,  // Ej: "Adrogué", "Lanús", "Canning"
-        empleada: datos.empleada,  // Ej: "María Gómez"
-        peso: datos.peso,          // Ej: 14.5
-        notas: datos.notas || ""   // Ej: Observaciones adicionales
-      })
-    });
-
-    console.log("Pesaje registrado correctamente.");
-  } catch (error) {
-    console.error("Error al enviar el registro a Google Sheets:", error);
-  }
 }
