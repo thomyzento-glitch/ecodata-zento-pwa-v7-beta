@@ -2,6 +2,15 @@ const KEY="ecodata_mobile_v4";
 const samples=[];
 const DEMO_CLEANUP_KEY="ecodata_demo_cleanup_v1";
 const PENDING_UPLOAD_KEY="ecodata_pending_uploads_v1";
+const GOOGLE_PENDING_KEY="ecodata_google_pending_v1";
+
+/* =========================
+   GOOGLE SHEETS / APPS SCRIPT
+   ========================= */
+const GOOGLE_SHEETS_CONFIG = {
+  endpoint: "PEGAR_AQUI_URL_DEL_WEB_APP",
+  enabled: true
+};
 
 /* =========================
    SUPABASE Y GOOGLE SHEETS
@@ -10,8 +19,7 @@ const SUPABASE_URL = "https://axcygjpdfwcjwdwyxlpl.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable__EwVnv-w3DodsB80N1hRkA_xHwRG7M9";
 const SUPABASE_TABLE = "pesajes";
 
-// ⚠️ REEMPLAZÁ ESTA URL CON LA QUE TE DA GOOGLE APPS SCRIPT AL DESPLEGAR
-const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyW4EYaoBx2E9ovlAWwJ6HUtG3ryUybe6PL0f01dP5xcrtJw9LTRZy-5GwCzkLKwbRN/exec";
+
 
 let supabaseClient = null;
 
@@ -60,6 +68,107 @@ function clearPending(id){
   const ids=pendingIds(); ids.delete(String(id)); savePendingIds(ids);
 }
 
+function googlePendingRecords(){
+  try {
+    const raw=JSON.parse(localStorage.getItem(GOOGLE_PENDING_KEY)||"[]");
+    return Array.isArray(raw)?raw:[];
+  } catch(_) { return []; }
+}
+
+function saveGooglePendingRecords(records){
+  const unique=[];
+  const seen=new Set();
+  for(const record of Array.isArray(records)?records:[]){
+    if(!record || !record.id) continue;
+    const id=String(record.id);
+    if(seen.has(id)) continue;
+    seen.add(id);
+    unique.push(record);
+  }
+  localStorage.setItem(GOOGLE_PENDING_KEY,JSON.stringify(unique));
+}
+
+function markGooglePending(record){
+  const records=googlePendingRecords();
+  const id=String(record.id);
+  const index=records.findIndex(r=>String(r.id)===id);
+  if(index>=0) records[index]=record;
+  else records.push(record);
+  saveGooglePendingRecords(records);
+}
+
+function clearGooglePending(id){
+  const idString=String(id);
+  saveGooglePendingRecords(googlePendingRecords().filter(r=>String(r.id)!==idString));
+}
+
+function normalizeGoogleRecord(record){
+  return {
+    id:String(record.id||""),
+    fecha:String(record.fecha||""),
+    hora:String(record.hora||""),
+    empleado:String(record.empleado||""),
+    sucursal:String(record.sucursal||""),
+    peso:Number(record.peso),
+    observaciones:String(record.observaciones||"")
+  };
+}
+
+async function sendToGoogleSheets(record){
+  if(!GOOGLE_SHEETS_CONFIG.enabled) return true;
+  const endpoint=String(GOOGLE_SHEETS_CONFIG.endpoint||"").trim();
+  if(!endpoint || endpoint.includes("PEGAR_AQUI_URL")){
+    markGooglePending(record);
+    return false;
+  }
+
+  const payload=normalizeGoogleRecord(record);
+  if(!payload.id || !payload.fecha || !payload.hora || !payload.empleado || !payload.sucursal || !Number.isFinite(payload.peso) || payload.peso<0){
+    console.warn("EcoData · registro inválido para Google Sheets:",payload);
+    markGooglePending(record);
+    return false;
+  }
+
+  try{
+    /*
+      text/plain evita el preflight CORS de application/json.
+      Apps Script recibe igualmente JSON mediante e.postData.contents.
+      Con no-cors el navegador no permite leer la respuesta; por eso
+      una petición de red completada se considera aceptada y el Apps Script
+      protege contra duplicados mediante el ID. Si la red falla, queda pendiente.
+    */
+    await fetch(endpoint,{
+      method:"POST",
+      mode:"no-cors",
+      headers:{"Content-Type":"text/plain;charset=utf-8"},
+      body:JSON.stringify(payload),
+      cache:"no-store"
+    });
+    clearGooglePending(payload.id);
+    return true;
+  }catch(err){
+    console.warn("EcoData · Google Sheets pendiente:",err);
+    markGooglePending(record);
+    return false;
+  }
+}
+
+async function syncGooglePending(){
+  if(!GOOGLE_SHEETS_CONFIG.enabled || !navigator.onLine) return;
+  const pending=googlePendingRecords();
+  if(!pending.length) return;
+
+  for(const record of pending){
+    const ok=await sendToGoogleSheets(record);
+    if(!ok) break;
+  }
+
+  const remaining=googlePendingRecords().length;
+  if(remaining){
+    setSyncStatus(`☁️ Supabase OK · ${remaining} pendiente(s) de Google Sheets`,false);
+  }
+}
+
 function toSupabaseTime(value){
   let raw=String(value??"").trim().toLowerCase();
   raw=raw.replace(/\u00a0/g," ").replace(/\s+/g," ").trim();
@@ -106,60 +215,6 @@ function fromSupabaseDate(value){
   return raw;
 }
 
-/* =========================
-   ENVÍO A GOOGLE SHEETS
-   ========================= */
-function normalizePeso(value){
-  if(value === undefined || value === null || String(value).trim() === ""){
-    return { ok:false, error:"El campo peso no fue recibido", original:value };
-  }
-  const normalized = typeof value === "string" ? value.trim().replace(",", ".") : value;
-  const peso = Number(normalized);
-  if(!Number.isFinite(peso)){
-    return { ok:false, error:`Peso inválido: ${String(value)}`, original:value };
-  }
-  return { ok:true, value:peso };
-}
-
-async function sendToGoogleSheets(record){
-  if(!GOOGLE_SCRIPT_URL || GOOGLE_SCRIPT_URL.includes("TU_SCRIPT_ID_AQUI")) return false;
-
-  const pesoCheck = normalizePeso(record && record.peso);
-  if(!pesoCheck.ok){
-    console.error("Peso inválido antes de enviar a Google Sheets:", pesoCheck.original, pesoCheck.error);
-    setSyncStatus(`⚠️ Google Sheets: ${pesoCheck.error}`, false);
-    return false;
-  }
-
-  const payload = {
-    id: String(record.id || ""),
-    fecha: record.fecha || "",
-    hora: record.hora || "",
-    sucursal: record.sucursal || "",
-    empleado: record.empleado || "",
-    // IMPORTANTE: peso se envía siempre como número, nunca como 0 por defecto.
-    peso: pesoCheck.value,
-    pesoKg: pesoCheck.value,
-    observaciones: record.observaciones || ""
-  };
-
-  console.log("PESO DEL RECORD:", record.peso);
-  console.log("PAYLOAD GOOGLE SHEETS:", payload);
-
-  try{
-    const response = await fetch(GOOGLE_SCRIPT_URL, {
-      method: "POST",
-      mode: "no-cors",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify(payload)
-    });
-    console.info("Enviado a Google Sheets:", payload);
-    return true;
-  }catch(err){
-    console.warn("Error enviando a Google Sheets:", err);
-    return false;
-  }
-}
 
 function recordToRemote(r){
   return {
@@ -224,6 +279,7 @@ async function insertMissingLocalRecords(local,remote){
     clearPending(r.id);
     await sendToGoogleSheets(r);
   }
+  await syncGooglePending();
   return pending.length;
 }
 
@@ -248,7 +304,10 @@ async function syncWithSupabase(){
 
     localStorage.setItem(KEY,JSON.stringify(result));
     render();
-    setSyncStatus(`☁️ Datos sincronizados · ${result.length} registros`,true);
+    await syncGooglePending();
+    if(!googlePendingRecords().length){
+      setSyncStatus(`☁️ Datos sincronizados · ${result.length} registros`,true);
+    }
   }catch(err){
     showSyncError(err);
   }
@@ -279,7 +338,7 @@ async function syncSingleRecord(record){
     clearPending(record.id);
     const sheetsOk = await sendToGoogleSheets(record);
     if (!sheetsOk) {
-      setSyncStatus("⚠️ Supabase OK · Google Sheets no confirmó el envío", false);
+      setSyncStatus("☁️ Supabase OK · Google Sheets pendiente", false);
     } else {
       setSyncStatus("☁️ Pesaje sincronizado",true);
     }
@@ -596,21 +655,21 @@ $("closeQrScanner").addEventListener("click",closeQrScanner);
    SINCRONIZACIÓN EN LA NUBE
    ========================= */
 initSupabase();
-window.addEventListener("online",()=>syncWithSupabase());
-window.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")syncWithSupabase();});
-window.addEventListener("load",()=>setTimeout(()=>syncWithSupabase(),300));
-setInterval(()=>{if(document.visibilityState==="visible" && navigator.onLine)syncWithSupabase();},60000);
+window.addEventListener("online",()=>{syncWithSupabase();syncGooglePending();});
+window.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"){syncWithSupabase();syncGooglePending();}});
+window.addEventListener("load",()=>setTimeout(()=>{syncWithSupabase();syncGooglePending();},300));
+setInterval(()=>{if(document.visibilityState==="visible" && navigator.onLine){syncWithSupabase();syncGooglePending();}},60000);
 
 /* =========================
    PWA — actualización automática
    ========================= */
 
-const APP_VERSION = "16";
+const APP_VERSION = "17";
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", async () => {
     try {
-      const reg = await navigator.serviceWorker.register("./service-worker-v16.js", {
+      const reg = await navigator.serviceWorker.register("./service-worker-v17.js", {
         scope: "./",
         updateViaCache: "none"
       });
@@ -664,38 +723,4 @@ if (installButton) {
     deferredInstallPrompt = null;
     updateInstallButton();
   });
-}
-async function guardarPesaje(empleado, sucursal, peso) {
-  const ahora = new Date();
-  
-  // Obtener fecha en formato YYYY-MM-DD
-  const fecha = ahora.toISOString().split('T')[0]; 
-  
-  // Obtener hora en formato HH:MM
-  const hora = ahora.toTimeString().split(' ')[0].substring(0, 5); 
-
-  const payload = {
-    fecha: fecha,
-    hora: hora,
-    empleado: empleado,
-    sucursal: sucursal,
-    peso: parseFloat(peso)
-  };
-
-  try {
-    const response = await fetch(SCRIPT_URL, {
-      method: 'POST',
-      mode: 'no-cors', // Evita bloqueos por CORS desde navegadores móviles
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
-
-    console.log('Pesaje guardado correctamente en Google Sheets');
-    alert('¡Registro guardado con éxito!');
-  } catch (error) {
-    console.error('Error al guardar:', error);
-    alert('Error al conectar con la planilla.');
-  }
 }
