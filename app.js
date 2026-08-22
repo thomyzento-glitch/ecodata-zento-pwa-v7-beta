@@ -11,7 +11,7 @@ const SUPABASE_PUBLISHABLE_KEY = "sb_publishable__EwVnv-w3DodsB80N1hRkA_xHwRG7M9
 const SUPABASE_TABLE = "pesajes";
 
 // ⚠️ REEMPLAZÁ ESTA URL CON LA QUE TE DA GOOGLE APPS SCRIPT AL DESPLEGAR
-const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwDVYCLqKAUqgqHBuVFsSzq8bLeQiaRUDtGSgQsKcEawZzI-hmfTRTOqDxsig8FQKtv/exec";
+const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyW4EYaoBx2E9ovlAWwJ6HUtG3ryUybe6PL0f01dP5xcrtJw9LTRZy-5GwCzkLKwbRN/exec";
 
 let supabaseClient = null;
 
