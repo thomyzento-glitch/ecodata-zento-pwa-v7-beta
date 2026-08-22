@@ -11,7 +11,7 @@ const SUPABASE_PUBLISHABLE_KEY = "sb_publishable__EwVnv-w3DodsB80N1hRkA_xHwRG7M9
 const SUPABASE_TABLE = "pesajes";
 
 // ⚠️ REEMPLAZÁ ESTA URL CON LA QUE TE DA GOOGLE APPS SCRIPT AL DESPLEGAR
-const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxY_j-4NutBQcG_F1jY-OdynmLbSkqfGdR2DRXmcRyirn65ZxMMIZNKBR8K8b5m4MfX8Q/exec";
+const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzRXBuEUgN79nwtOWUOfPpiqn4Y4P8Zqc5j2hRukRPDF7NP72hgUjvVJVDPAZ3ldWcSsQ/exec";
 
 let supabaseClient = null;
 
@@ -109,55 +109,26 @@ function fromSupabaseDate(value){
 /* =========================
    ENVÍO A GOOGLE SHEETS
    ========================= */
-function normalizePeso(value){
-  if(value === undefined || value === null || String(value).trim() === ""){
-    return { ok:false, error:"El campo peso no fue recibido", original:value };
-  }
-  const normalized = typeof value === "string" ? value.trim().replace(",", ".") : value;
-  const peso = Number(normalized);
-  if(!Number.isFinite(peso)){
-    return { ok:false, error:`Peso inválido: ${String(value)}`, original:value };
-  }
-  return { ok:true, value:peso };
-}
-
 async function sendToGoogleSheets(record){
-  if(!GOOGLE_SCRIPT_URL || GOOGLE_SCRIPT_URL.includes("TU_SCRIPT_ID_AQUI")) return false;
-
-  const pesoCheck = normalizePeso(record && record.peso);
-  if(!pesoCheck.ok){
-    console.error("Peso inválido antes de enviar a Google Sheets:", pesoCheck.original, pesoCheck.error);
-    setSyncStatus(`⚠️ Google Sheets: ${pesoCheck.error}`, false);
-    return false;
-  }
-
-  const payload = {
-    id: String(record.id || ""),
-    fecha: record.fecha || "",
-    hora: record.hora || "",
-    sucursal: record.sucursal || "",
-    empleado: record.empleado || "",
-    // IMPORTANTE: peso se envía siempre como número, nunca como 0 por defecto.
-    peso: pesoCheck.value,
-    pesoKg: pesoCheck.value,
-    observaciones: record.observaciones || ""
-  };
-
-  console.log("PESO DEL RECORD:", record.peso);
-  console.log("PAYLOAD GOOGLE SHEETS:", payload);
-
+  if(!GOOGLE_SCRIPT_URL || GOOGLE_SCRIPT_URL.includes("TU_SCRIPT_ID_AQUI")) return;
   try{
-    const response = await fetch(GOOGLE_SCRIPT_URL, {
+    await fetch(GOOGLE_SCRIPT_URL, {
       method: "POST",
       mode: "no-cors",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify(payload)
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: record.id,
+        fecha: record.fecha,
+        hora: record.hora,
+        sucursal: record.sucursal,
+        empleado: record.empleado,
+        peso: record.peso,
+        observaciones: record.observaciones || ""
+      })
     });
-    console.info("Enviado a Google Sheets:", payload);
-    return true;
+    console.info("Enviado a Google Sheets correctamente");
   }catch(err){
     console.warn("Error enviando a Google Sheets:", err);
-    return false;
   }
 }
 
@@ -168,7 +139,7 @@ function recordToRemote(r){
     hora:toSupabaseTime(r.hora),
     sucursal:String(r.sucursal||"Sin sucursal"),
     empleado:String(r.empleado||""),
-    peso:normalizePeso(r.peso).ok ? normalizePeso(r.peso).value : r.peso,
+    peso:Number(r.peso||0),
     observaciones:String(r.observaciones||""),
     created_at:r.created_at||new Date().toISOString()
   };
@@ -180,7 +151,7 @@ function remoteToLocal(r){
     hora:String(r.hora||""),
     sucursal:String(r.sucursal||"Sin sucursal"),
     empleado:String(r.empleado||""),
-    peso:normalizePeso(r.peso).ok ? normalizePeso(r.peso).value : r.peso,
+    peso:Number(r.peso||0),
     observaciones:String(r.observaciones||""),
     created_at:r.created_at||null
   };
@@ -220,10 +191,10 @@ async function insertMissingLocalRecords(local,remote){
   const {error}=await supabaseClient.from(SUPABASE_TABLE).insert(payload);
   if(error) throw error;
   
-  for (const r of pending) {
-    clearPending(r.id);
-    await sendToGoogleSheets(r);
-  }
+  pending.forEach(r=>{ 
+    clearPending(r.id); 
+    sendToGoogleSheets(r); 
+  });
   return pending.length;
 }
 
@@ -277,12 +248,8 @@ async function syncSingleRecord(record){
     }
 
     clearPending(record.id);
-    const sheetsOk = await sendToGoogleSheets(record);
-    if (!sheetsOk) {
-      setSyncStatus("⚠️ Supabase OK · Google Sheets no confirmó el envío", false);
-    } else {
-      setSyncStatus("☁️ Pesaje sincronizado",true);
-    }
+    sendToGoogleSheets(record);
+    setSyncStatus("☁️ Pesaje sincronizado",true);
     return true;
   }catch(err){
     showSyncError(err);
@@ -460,17 +427,11 @@ function screen(id){
 }
 document.querySelectorAll("[data-screen]").forEach(b=>b.addEventListener("click",()=>screen(b.dataset.screen)));
 $("form").addEventListener("submit",e=>{
- e.preventDefault();
- const pesoInput=$("peso").value;
- const pesoCheck=normalizePeso(pesoInput);
- console.log("PESO DEL INPUT:", pesoInput);
- console.log("PESO CONVERTIDO:", pesoCheck.ok ? pesoCheck.value : undefined);
- if(!pesoCheck.ok || pesoCheck.value<0)return toast("Ingresá un peso válido.");
- const p=pesoCheck.value;
+ e.preventDefault();let p=Number($("peso").value);
+ if(!p||p<0)return toast("Ingresá un peso válido.");
  if(!$("sucursal").value)return toast("Escaneá primero el QR de la sucursal.");
  let n=now(),d=data();
  const record={id:localId(),fecha:n.fecha,hora:n.hora,sucursal:$("sucursal").value,empleado:$("empleado").value,peso:p,observaciones:$("obs").value,created_at:new Date().toISOString()};
- console.log("RECORD:",record);
  d.unshift(record);
  save(d);markPending(record.id);syncSingleRecord(record);$("form").reset();$("sucursal").value="";$("sucursalLabel").textContent="Sin identificar";$("branchAuto").classList.remove("identified");setQrStatus("Escaneá el QR de la sucursal","Usá la cámara para identificarla automáticamente.");screen("home");toast("✓ Pesaje guardado correctamente");
 });
@@ -605,12 +566,12 @@ setInterval(()=>{if(document.visibilityState==="visible" && navigator.onLine)syn
    PWA — actualización automática
    ========================= */
 
-const APP_VERSION = "16";
+const APP_VERSION = "15";
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", async () => {
     try {
-      const reg = await navigator.serviceWorker.register("./service-worker-v16.js", {
+      const reg = await navigator.serviceWorker.register("./service-worker-v15.js", {
         scope: "./",
         updateViaCache: "none"
       });
