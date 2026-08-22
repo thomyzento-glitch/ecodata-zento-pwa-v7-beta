@@ -9,7 +9,7 @@ const GOOGLE_PENDING_KEY="ecodata_google_pending_v1";
    ========================= */
 const GOOGLE_SHEETS_CONFIG = {
   endpoint: "https://script.google.com/macros/s/AKfycbxeOsdzWLDPQW6kDrEGdIf19QuPq8QYLDSttAXMz7XkxEhvPVMLGBRjl9D7rDjl4aIl/exec",
-  enabled: true
+  enabled: false
 };
 
 /* =========================
