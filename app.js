@@ -11,7 +11,7 @@ const SUPABASE_PUBLISHABLE_KEY = "sb_publishable__EwVnv-w3DodsB80N1hRkA_xHwRG7M9
 const SUPABASE_TABLE = "pesajes";
 
 // ⚠️ REEMPLAZÁ ESTA URL CON LA QUE TE DA GOOGLE APPS SCRIPT AL DESPLEGAR
-const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxY_j-4NutBQcG_F1jY-OdynmLbSkqfGdR2DRXmcRyirn65ZxMMIZNKBR8K8b5m4MfX8Q/exec";
+const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyIaC2CA8ClARapE-kVY5wyVXYnfq0WkRurDJFWv2KHJp7gxn6mgZGn3Umcx06T0ee2/exec";
 
 let supabaseClient = null;
 
@@ -132,29 +132,29 @@ async function sendToGoogleSheets(record){
   }
 
   const payload = {
-    id: String(record.id || ""),
     fecha: record.fecha || "",
     hora: record.hora || "",
     sucursal: record.sucursal || "",
-    empleado: record.empleado || "",
-    // IMPORTANTE: peso se envía siempre como número, nunca como 0 por defecto.
+    empleada: record.empleado || record.empleada || "",
     peso: pesoCheck.value,
-    pesoKg: pesoCheck.value,
-    observaciones: record.observaciones || ""
+    notas: record.observaciones || record.notas || ""
   };
 
-  console.log("PESO DEL RECORD:", record.peso);
-  console.log("PAYLOAD GOOGLE SHEETS:", payload);
-
   try{
+    // Enviamos como text/plain para evitar que el navegador envíe preflight OPTIONS que Google Script no soporta
     const response = await fetch(GOOGLE_SCRIPT_URL, {
       method: "POST",
-      mode: "no-cors",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify(payload)
     });
-    console.info("Enviado a Google Sheets:", payload);
-    return true;
+    
+    if (response.ok) {
+      console.info("Enviado a Google Sheets con éxito:", payload);
+      return true;
+    } else {
+      console.warn("Respuesta no ok de Google Sheets:", response.status);
+      return false;
+    }
   }catch(err){
     console.warn("Error enviando a Google Sheets:", err);
     return false;
@@ -664,4 +664,33 @@ if (installButton) {
     deferredInstallPrompt = null;
     updateInstallButton();
   });
+}
+
+async function enviarPesajeAGoogleSheets(datos) {
+  const ahora = new Date();
+  
+  // Separar fecha y hora
+  const fechaHoy = ahora.toLocaleDateString("es-AR");
+  const horaHoy = ahora.toLocaleTimeString("es-AR", { hour: '2-digit', minute: '2-digit' });
+
+  try {
+    await fetch(GOOGLE_SCRIPT_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8",
+      },
+      body: JSON.stringify({
+        fecha: fechaHoy,          // Ej: "21/8/2026"
+        hora: horaHoy,            // Ej: "22:32"
+        sucursal: datos.sucursal,  // Ej: "Adrogué", "Lanús", "Canning"
+        empleada: datos.empleada,  // Ej: "María Gómez"
+        peso: datos.peso,          // Ej: 14.5
+        notas: datos.notas || ""   // Ej: Observaciones adicionales
+      })
+    });
+
+    console.log("Pesaje registrado correctamente.");
+  } catch (error) {
+    console.error("Error al enviar el registro a Google Sheets:", error);
+  }
 }
