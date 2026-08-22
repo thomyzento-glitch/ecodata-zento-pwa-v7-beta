@@ -10,8 +10,8 @@ const SUPABASE_URL = "https://axcygjpdfwcjwdwyxlpl.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable__EwVnv-w3DodsB80N1hRkA_xHwRG7M9";
 const SUPABASE_TABLE = "pesajes";
 
-// URL de tu Google Apps Script
-const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyIaC2CA8ClARapE-kVY5wyVXYnfq0WkRurDJFWv2KHJp7gxn6mgZGn3Umcx06T0ee2/exec";
+// ⚠️ REEMPLAZÁ ESTA URL CON LA QUE TE DA GOOGLE APPS SCRIPT AL DESPLEGAR
+const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwDVYCLqKAUqgqHBuVFsSzq8bLeQiaRUDtGSgQsKcEawZzI-hmfTRTOqDxsig8FQKtv/exec";
 
 let supabaseClient = null;
 
@@ -107,7 +107,7 @@ function fromSupabaseDate(value){
 }
 
 /* =========================
-   ENVÍO A GOOGLE SHEETS (CORREGIDO)
+   ENVÍO A GOOGLE SHEETS
    ========================= */
 function normalizePeso(value){
   if(value === undefined || value === null || String(value).trim() === ""){
@@ -132,34 +132,28 @@ async function sendToGoogleSheets(record){
   }
 
   const payload = {
-    fecha: record.fecha || new Date().toLocaleDateString("es-AR"),
-    hora: record.hora || new Date().toLocaleTimeString("es-AR", { hour: '2-digit', minute: '2-digit' }),
+    id: String(record.id || ""),
+    fecha: record.fecha || "",
+    hora: record.hora || "",
     sucursal: record.sucursal || "",
-    empleada: record.empleado || record.empleada || "",
+    empleado: record.empleado || "",
+    // IMPORTANTE: peso se envía siempre como número, nunca como 0 por defecto.
     peso: pesoCheck.value,
-    notas: record.observaciones || record.notas || ""
+    pesoKg: pesoCheck.value,
+    observaciones: record.observaciones || ""
   };
 
-  try{
-    // Usamos x-www-form-urlencoded para que Google Apps Script reciba directamente el payload en e.parameter o e.postData sin bloqueos de CORS
-    const bodyParams = new URLSearchParams();
-    bodyParams.append("fecha", payload.fecha);
-    bodyParams.append("hora", payload.hora);
-    bodyParams.append("sucursal", payload.sucursal);
-    bodyParams.append("empleada", payload.empleada);
-    bodyParams.append("peso", payload.peso);
-    bodyParams.append("notas", payload.notas);
+  console.log("PESO DEL RECORD:", record.peso);
+  console.log("PAYLOAD GOOGLE SHEETS:", payload);
 
-    await fetch(GOOGLE_SCRIPT_URL, {
+  try{
+    const response = await fetch(GOOGLE_SCRIPT_URL, {
       method: "POST",
       mode: "no-cors",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded"
-      },
-      body: bodyParams.toString()
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(payload)
     });
-    
-    console.info("Petición enviada a Google Sheets con éxito:", payload);
+    console.info("Enviado a Google Sheets:", payload);
     return true;
   }catch(err){
     console.warn("Error enviando a Google Sheets:", err);
@@ -469,11 +463,14 @@ $("form").addEventListener("submit",e=>{
  e.preventDefault();
  const pesoInput=$("peso").value;
  const pesoCheck=normalizePeso(pesoInput);
+ console.log("PESO DEL INPUT:", pesoInput);
+ console.log("PESO CONVERTIDO:", pesoCheck.ok ? pesoCheck.value : undefined);
  if(!pesoCheck.ok || pesoCheck.value<0)return toast("Ingresá un peso válido.");
  const p=pesoCheck.value;
  if(!$("sucursal").value)return toast("Escaneá primero el QR de la sucursal.");
  let n=now(),d=data();
  const record={id:localId(),fecha:n.fecha,hora:n.hora,sucursal:$("sucursal").value,empleado:$("empleado").value,peso:p,observaciones:$("obs").value,created_at:new Date().toISOString()};
+ console.log("RECORD:",record);
  d.unshift(record);
  save(d);markPending(record.id);syncSingleRecord(record);$("form").reset();$("sucursal").value="";$("sucursalLabel").textContent="Sin identificar";$("branchAuto").classList.remove("identified");setQrStatus("Escaneá el QR de la sucursal","Usá la cámara para identificarla automáticamente.");screen("home");toast("✓ Pesaje guardado correctamente");
 });
@@ -667,4 +664,38 @@ if (installButton) {
     deferredInstallPrompt = null;
     updateInstallButton();
   });
+}
+async function guardarPesaje(empleado, sucursal, peso) {
+  const ahora = new Date();
+  
+  // Obtener fecha en formato YYYY-MM-DD
+  const fecha = ahora.toISOString().split('T')[0]; 
+  
+  // Obtener hora en formato HH:MM
+  const hora = ahora.toTimeString().split(' ')[0].substring(0, 5); 
+
+  const payload = {
+    fecha: fecha,
+    hora: hora,
+    empleado: empleado,
+    sucursal: sucursal,
+    peso: parseFloat(peso)
+  };
+
+  try {
+    const response = await fetch(SCRIPT_URL, {
+      method: 'POST',
+      mode: 'no-cors', // Evita bloqueos por CORS desde navegadores móviles
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    console.log('Pesaje guardado correctamente en Google Sheets');
+    alert('¡Registro guardado con éxito!');
+  } catch (error) {
+    console.error('Error al guardar:', error);
+    alert('Error al conectar con la planilla.');
+  }
 }
