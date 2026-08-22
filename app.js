@@ -165,12 +165,7 @@ async function insertMissingLocalRecords(local,remote){
   const {error}=await supabaseClient.from(SUPABASE_TABLE).insert(payload);
   if(error) throw error;
   
-  for (const r of pending) {
-    clearPending(r.id);
-    await sendToGoogleSheets(r);
-  }
-  return pending.length;
-}
+
 
 async function syncWithSupabase(){
   if(!supabaseClient){setSyncStatus("⚠️ Supabase no disponible");return;}
@@ -221,20 +216,7 @@ async function syncSingleRecord(record){
       if(error) throw error;
     }
 
-    clearPending(record.id);
-    const sheetsOk = await sendToGoogleSheets(record);
-    if (!sheetsOk) {
-      setSyncStatus("⚠️ Supabase OK · Google Sheets no confirmó el envío", false);
-    } else {
-      setSyncStatus("☁️ Pesaje sincronizado",true);
-    }
-    return true;
-  }catch(err){
-    showSyncError(err);
-    return false;
-  }
-}
-
+  
 async function deleteRecord(id){
   const recordId=String(id);
   if(!navigator.onLine || !supabaseClient){
