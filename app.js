@@ -40,6 +40,31 @@ function localId(){
   if(window.crypto && typeof crypto.randomUUID === "function") return crypto.randomUUID();
   return "local-"+Date.now()+"-"+Math.random().toString(16).slice(2);
 }
+function normalizePeso(value){
+  if(typeof value === "number"){
+    return Number.isFinite(value) && value >= 0
+      ? {ok:true,value}
+      : {ok:false,value:null};
+  }
+
+  let raw=String(value ?? "").trim();
+
+  if(!raw){
+    return {ok:false,value:null};
+  }
+
+  // Acepta tanto 12.50 como 12,50
+  raw=raw.replace(",", ".");
+
+  const number=Number(raw);
+
+  if(!Number.isFinite(number) || number < 0){
+    return {ok:false,value:null};
+  }
+
+  return {ok:true,value:number};
+}
+
 function normalizeLocalRecords(records){
   let changed=false;
   const out=(Array.isArray(records)?records:[]).map(r=>{
