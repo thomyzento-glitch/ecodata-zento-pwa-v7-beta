@@ -10,7 +10,8 @@ const SUPABASE_URL = "https://axcygjpdfwcjwdwyxlpl.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable__EwVnv-w3DodsB80N1hRkA_xHwRG7M9";
 const SUPABASE_TABLE = "pesajes";
 
-
+// ⚠️ REEMPLAZÁ ESTA URL CON LA QUE TE DA GOOGLE APPS SCRIPT AL DESPLEGAR
+const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxY_j-4NutBQcG_F1jY-OdynmLbSkqfGdR2DRXmcRyirn65ZxMMIZNKBR8K8b5m4MfX8Q/exec";
 
 let supabaseClient = null;
 
@@ -105,6 +106,60 @@ function fromSupabaseDate(value){
   return raw;
 }
 
+/* =========================
+   ENVÍO A GOOGLE SHEETS
+   ========================= */
+function normalizePeso(value){
+  if(value === undefined || value === null || String(value).trim() === ""){
+    return { ok:false, error:"El campo peso no fue recibido", original:value };
+  }
+  const normalized = typeof value === "string" ? value.trim().replace(",", ".") : value;
+  const peso = Number(normalized);
+  if(!Number.isFinite(peso)){
+    return { ok:false, error:`Peso inválido: ${String(value)}`, original:value };
+  }
+  return { ok:true, value:peso };
+}
+
+async function sendToGoogleSheets(record){
+  if(!GOOGLE_SCRIPT_URL || GOOGLE_SCRIPT_URL.includes("TU_SCRIPT_ID_AQUI")) return false;
+
+  const pesoCheck = normalizePeso(record && record.peso);
+  if(!pesoCheck.ok){
+    console.error("Peso inválido antes de enviar a Google Sheets:", pesoCheck.original, pesoCheck.error);
+    setSyncStatus(`⚠️ Google Sheets: ${pesoCheck.error}`, false);
+    return false;
+  }
+
+  const payload = {
+    id: String(record.id || ""),
+    fecha: record.fecha || "",
+    hora: record.hora || "",
+    sucursal: record.sucursal || "",
+    empleado: record.empleado || "",
+    // IMPORTANTE: peso se envía siempre como número, nunca como 0 por defecto.
+    peso: pesoCheck.value,
+    pesoKg: pesoCheck.value,
+    observaciones: record.observaciones || ""
+  };
+
+  console.log("PESO DEL RECORD:", record.peso);
+  console.log("PAYLOAD GOOGLE SHEETS:", payload);
+
+  try{
+    const response = await fetch(GOOGLE_SCRIPT_URL, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(payload)
+    });
+    console.info("Enviado a Google Sheets:", payload);
+    return true;
+  }catch(err){
+    console.warn("Error enviando a Google Sheets:", err);
+    return false;
+  }
+}
 
 function recordToRemote(r){
   return {
