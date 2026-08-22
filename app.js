@@ -141,20 +141,15 @@ async function sendToGoogleSheets(record){
   };
 
   try{
-    // Enviamos como text/plain para evitar que el navegador envíe preflight OPTIONS que Google Script no soporta
-    const response = await fetch(GOOGLE_SCRIPT_URL, {
+    // NO usamos mode: "no-cors" para que envíe el cuerpo del JSON adecuadamente
+    await fetch(GOOGLE_SCRIPT_URL, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify(payload)
     });
     
-    if (response.ok) {
-      console.info("Enviado a Google Sheets con éxito:", payload);
-      return true;
-    } else {
-      console.warn("Respuesta no ok de Google Sheets:", response.status);
-      return false;
-    }
+    console.info("Petición enviada a Google Sheets:", payload);
+    return true;
   }catch(err){
     console.warn("Error enviando a Google Sheets:", err);
     return false;
